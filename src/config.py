@@ -1,11 +1,12 @@
 import toml
+from toml import TomlDecodeError
+
 
 class Configuration:
     def __init__(self, config_path: str):
         try:
             self.config = toml.load(config_path)
-        except(TypeError):
+        except (TypeError):
             pass
-        except(TomlDecodeError):
+        except (TomlDecodeError):
             pass
-        
