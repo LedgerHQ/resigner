@@ -1,10 +1,13 @@
 # Configuration for testing
 
+# use servertime: if not true use UTC+0. Default = True
+use_servertime = true
+
 [bitcoind_config]
-url=http://127.0.0.1:18443
+url = "http://127.0.0.1:18443"
 
 [spending_conditions]
 # Spending limit in satoshis; The monthly_limit >= weekly_limit >= daily_limit.
-daily_limit=
-weekly_limit=
-monthly_limit=
+daily_limit = 12000000
+weekly_limit = 96000000
+monthly_limit = 420000000

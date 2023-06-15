@@ -5,13 +5,13 @@ import httpx
 import orjson
 
 
-class BitcoinRPCError(Exception):
+class BitcoindRPCError(Exception):
     def __init__(self, code, message):
         self.code = code
         self.message = message
 
 
-class BitcoinRPC:
+class BitcoindRPC:
     """
     Bitcoin RPC client.
 
@@ -35,7 +35,7 @@ class BitcoinRPC:
         Initiate JSONRPC call.
         """
         req = self.client.post(
-            url=self.url,
+            url=self._url,
             content=orjson.dumps(
                 {
                     "jsonrpc": "2.0",
@@ -176,7 +176,7 @@ class BitcoinRPC:
         self,
         dummy: Optional[Literal["*"]] = "*",
         minconf: Optional[int] = 0,
-        include_watchonly: Optional[bool] = True,  # True for watch-only wallets, otherwise false
+        include_watchonly: Optional[bool] = False,  # True for watch-only wallets, otherwise false
         avoid_reuse: Optional[bool] = True  # Only available if avoid_reuse wallet flag is set
     ):
         return await self.async_call(
