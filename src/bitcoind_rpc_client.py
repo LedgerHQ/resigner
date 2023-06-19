@@ -49,7 +49,7 @@ class BitcoindRPC:
         resp = orjson.loads((await req).content)
 
         if resp["error"] is not None:
-            raise BitcoinRPCError(resp["error"]["code"], resp["error"]["message"])
+            raise BitcoindRPCError(resp["error"]["code"], resp["error"]["message"])
         else:
             return resp["result"]
 
@@ -72,7 +72,6 @@ class BitcoindRPC:
         return await self.async_call(
             "getblockstats",
             [hash_or_height, list(keys) or None],
-            timeout=httpx.Timeout(timeout),
         )
 
     async def getblock(self, block_hash: str, verbosity: Literal[0, 1, 2] = 1, timeout: Optional[float] = 5.0):
@@ -80,17 +79,41 @@ class BitcoindRPC:
             "getblock", [block_hash, verbosity], timeout=httpx.Timeout(timeout)
         )
 
+    async def listsinceblock(
+        self,
+        block_hash: str,
+        target_confirmations: Optional[int] = 1,
+        include_watchonly: Optional[bool] = True,
+        include_removed: Optional[bool] = True
+    ):
+        return await self.async_call(
+            "listsinceblock",
+            [block_hash, target_confirmations, include_watchonly, include_removed]
+        )
+
+    async def scanblocks(
+        self,
+        action: Literal["start", "stop", "status"],
+        scanobjects: Optional[List] = None,
+        start_height: Optional[int] = 0,
+        stop_height: Optional[int] = None,
+        filtertype: Optional[str] = "basic",
+        options: Optional[Dict] = None
+        ):
+        return await self.async_call(
+            "scanblocks",
+            [action, scanobjects, start_height, stop_height, filtertype, options]
+        )
+
     async def getrawtransaction(
         self,
         txid: str,
         verbose: bool = True,
         block_hash: Optional[str] = None,
-        timeout: Optional[float] = 5.0,
     ):
         return await self.async_call(
             "getrawtransaction",
-            [txid, verbose, block_hash],
-            timeout=httpx.Timeout(timeout)
+            [txid, verbose, block_hash]
         )
 
     async def createpsbt(
@@ -98,8 +121,7 @@ class BitcoindRPC:
         inputs: List,
         outputs: List,
         locktime: Optional[int] = 0,
-        replaceable: Optional[bool] = False,
-        timeout: Optional[float] = 5.0
+        replaceable: Optional[bool] = False
     ):
         """
         <https://developer.bitcoin.org/reference/rpc/createpsbt.html>
@@ -107,8 +129,7 @@ class BitcoindRPC:
 
         return await self.async_call(
             "createpsbt",
-            [inputs, outputs, locktime, replaceable],
-            timeout=httpx.Timeout(timeout)
+            [inputs, outputs, locktime, replaceable]
         )
 
     async def analysepsbt(self, psbt: str):
@@ -126,12 +147,16 @@ class BitcoindRPC:
     async def joinpsbt(self, *psbts):
         return await self.async_call("joinpsbts", psbts)
 
-    async def utxoupdatepsbt(self, psbt: str, descriptors: Optional[List] = None, timeout: Optional[float] = 5.0):
+    async def utxoupdatepsbt(
+        self,
+        psbt: str,
+        descriptors: Optional[List] = None
+    ):
         result = None
         if not descriptors:
-            result = await self.async_call("utxoupdatepsbt", [psbt], timeout=httpx.Timeout(timeout))
+            result = await self.async_call("utxoupdatepsbt", [psbt])
         else:
-            result = await self.async_call("utxoupdatepsbt", [psbt, descriptors], timeout=httpx.Timeout(timeout))
+            result = await self.async_call("utxoupdatepsbt", [psbt, descriptors])
 
         return result
 
@@ -144,33 +169,29 @@ class BitcoindRPC:
                 "ALL", "NONE", "SINGLE", "ALL|ANYONECANPAY", "NONE|ANYONECANPAY", "SINGLE|ANYONECANPAY"
                 ]
             ] = "ALL",
-        bip32derivs: Optional[bool] = True,
-        timeout: Optional[float] = 5.0
+        bip32derivs: Optional[bool] = True
     ):
         """
         <https://developer.bitcoin.org/reference/rpc/walletprocesspsbt.html>
         """
         return await self.async_call(
             "walletprocesspsbt",
-            [psbt, sign, sighashtype, bip32derivs],
-            timeout=httpx.Timeout(timeout)
+            [psbt, sign, sighashtype, bip32derivs]
         )
 
     async def gettransaction(
         self,
         txid: str,
         include_watchonly: Optional[bool] = True,  # true for watch-only wallets, otherwise false
-        verbose: Optional[bool] = False,
-        timeout: Optional[float] = 5.0
+        verbose: Optional[bool] = False
     ):
         """
         <https://developer.bitcoin.org/reference/rpc/gettransaction.html>
         """
         return await self.async_call(
             "gettransaction",
-            [txid, include_watchonly, verbose],
-            timeout=httpx.Timeout(timeout)
-            )
+            [txid, include_watchonly, verbose]
+        )
 
     async def getbalance(
         self,
@@ -196,8 +217,7 @@ class BitcoindRPC:
         inputs: Optional[List] = [],
         locktime: Optional[int] = 0,
         options: Optional[Dict] = {},
-        bip32derivs: Optional[bool] = True,
-        timeout: Optional[float] = 5.0
+        bip32derivs: Optional[bool] = True
     ):
         # Todo: Test
-        return await self.async_call(inputs, outputs, locktime, options, bip32derivs, timeout=httpx.Timeout(timeout))
+        return await self.async_call(inputs, outputs, locktime, options, bip32derivs)
