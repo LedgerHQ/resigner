@@ -1,5 +1,5 @@
 import time
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Optional
 
 from db import Session
 
@@ -26,65 +26,58 @@ class BaseModel:
     def __create(self, shema):
         raise NotImplementedError
 
-    def insert(self):
+    def __insert(self):
         raise NotImplementedError
 
-    def get(self):
-        raise NotImplementedError
+    @classmethod
+    def get(self, *args):
+        sql_query = f"""SELECT {",".join(args)} from {self._table}"""
+        self._cursor = Session.execute(sql_query)
+        
+        result = {}
+        for row in self._cursor:
+            for i in range(len(args)):
+                result[args[i]] = row[i]
 
-    def update(self):
-        raise NotImplementedError
+        return result
 
+    # 'condition' is piece of sql containing with the 'where' clause
+    @classmethod
+    def update(self, options: Dict, condition: Optional[str] = ""):
+        query = []
+        for key, value in options.items():
+            query.append(f" {key} = {value}")
+
+        sql = f"""UPDATE {self._table}
+        SET {", ".join(query)}
+        {condition}
+        """
+
+        Session.execute(sql).commit()
+
+    @classmethod
     def filter(self):
         raise NotImplementedError
 
 
 class AggregateSpends(BaseModel):
-    def __init__(self):
-        self.__create(AGGREGATE_SPENDS_SCHEMA)
-
-    def __create(self, schema):
-        Session.execute(schema)
+    _table: str = "AGGREGATE_SPENDS"
+    _primary_key = False
 
     def insert(self, daily_spends: int = 0, weekly_spends: int = 0, monthly_spends: int = 0):
-        sql = """INSERT INTO AGGREGATE_SPENDS VALUES (?,?,?)"""
+        sql = f"""INSERT INTO {self._table} VALUES (?,?,?)"""
 
         Session.execute(sql, [daily_spends, weekly_spends, monthly_spends]).commit()
 
-    def get(self, *args):
-        sql = f"""SELECT {",".join(args)} from AGGREGATE_SPENDS"""
-
-        self._cursor = Session.execute(sql)
-        
-        ret = {}
-        for row in self._cursor:
-            for i in range(len(args))
-                ret[args[i]] = row[i]
-
-        return ret
-
-    def update(self, options: Dict):
-        query = []
-        for key, value in options.items():
-            query.append(f" {key} = {value}")
-
-        # There should be just one Row in AGGREGATE_SPENDS
-        sql = f"""UPDATE AGGREGATE_SPENDS
-        SET {", ".join(query)}
-        """
-
-        Session.execute(sql).commit()
 
 
 class SignedSpends(BaseModel):
-    def __init__(self):
-        self.__create(SIGNED_SPENDS_SCHEMA)
+    _table: str = "SIGNED_SPENDS"
+    _primary_key = True
 
-    def __create(self, schema):
-        Session.execute(schema)
-
+    @classmethod
     def insert(self, signed_psbt: str, unsigned_psbt: str, amount: int, request_timestamp: Optional[int] = 0):
-        sql = """INSERT INTO SIGNED_SPENDS VALUES (?,?,?,?,?)"""
+        sql = f"""INSERT INTO {self._tables} VALUES (?,?,?,?,?)"""
 
         Session.execute(
             sql,
@@ -96,27 +89,3 @@ class SignedSpends(BaseModel):
                 request_timestamp
             ]
         ).commit()
-
-    def get(self, *args):
-        sql = f"""SELECT {",".join(args)} from SIGNED_SPENDS"""
-
-        self._cursor = Session.execute(sql)
-        
-        ret = {}
-        for row in self._cursor:
-            for i in range(len(args))
-                ret[args[i]] = row[i]
-
-        return ret
-
-    def update(self, options: Dict):
-        query = []
-        for key, value in options.items():
-            query.append(f" {key} = {value}")
-
-        # There should be just one Row in AGGREGATE_SPENDS
-        sql = f"""UPDATE SIGNED_SPENDS
-        SET {", ".join(query)}
-        """
-
-        Session.execute(sql).commit()
