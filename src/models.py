@@ -3,6 +3,25 @@ from typing import Any, List, Dict, Optional
 
 from db import Session
 
+
+UTXOS_SCHEMA = """CREATE TABLE UTXOS
+id INT PRIMARY KEY NOT NULL,
+blockheight INT NOT NULL,
+blocktime INT NOT NULL,
+txid VARCHAR NOT NULL,
+vout INT NOT NULL,
+amount_sats INT NOT NULL
+UNIQUE (txid, vout)
+"""
+
+SPENT_UTXOS_SCHEMA =  """CREATE TABLE SPENT_UTXOS 
+(id INT PRIMARY KEY NOT NULL,
+txid VARCHAR NOT NULL,
+vout VARCHAR NOT NULL,
+FOREIGN KEY (id) REFERENCES UTXOS(id)
+)
+"""
+
 AGGREGATE_SPENDS_SCHEMA = """CREATE TABLE AGGREGATE_SPENDS
 (daily_spends INT,
 weekly_spends INT,
@@ -14,11 +33,13 @@ SIGNED_SPENDS_SCHEMA = """CREATE TABLE SIGNED_SPENDS
 (processed_at INT PRIMARY KEY NOT NULL,
 unsigned_psbt VARCHAR NOT NULL,
 signed_psbt VARCHAR NOT NULL,
-amount INT NOT NULL,
-request_timestamp INT
+destination VARCHAR NOT NULL,
+amount_sats INT NOT NULL,
+utxo_id VARCHAR NOT NULL,
+request_timestamp INT,
+FOREIGN KEY (utxo_id) REFERENCES SPENT_UTXOS (id)
 );
 """
-
 
 class BaseModel:
     _cursor: Any = None
@@ -59,10 +80,31 @@ class BaseModel:
     def filter(self):
         raise NotImplementedError
 
+class Utxos(BaseModel):
+    _table: str = "UTXOS"
+    _primary_key: bool = True
+
+    def insert(self, blockheight: int, blocktime: int, txid: str, vout: int, amount_sats: int):
+        sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?)"""
+
+        Session.execute(
+            sql, 
+            [blockheight, blocktime, txid, vout, amount_sats]
+        ).commit()
+
+class SpentUtxos(BaseModel):
+    _table: str = "SPENT_UTXOS"
+    _primary_key: bool = True
+
+    def insert(self, txid: str, vout: int):
+        sql = f"""INSERT INTO {self._table} VALUES (?,?)"""
+
+        Session.execute(sql, [txid, vout]).commit()
+
 
 class AggregateSpends(BaseModel):
     _table: str = "AGGREGATE_SPENDS"
-    _primary_key = False
+    _primary_key: bool = False
 
     def insert(self, daily_spends: int = 0, weekly_spends: int = 0, monthly_spends: int = 0):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?)"""
@@ -76,8 +118,16 @@ class SignedSpends(BaseModel):
     _primary_key = True
 
     @classmethod
-    def insert(self, signed_psbt: str, unsigned_psbt: str, amount: int, request_timestamp: Optional[int] = 0):
-        sql = f"""INSERT INTO {self._tables} VALUES (?,?,?,?,?)"""
+    def insert(
+        self,
+        unsigned_psbt: str,
+        signed_psbt: str,
+        destination: str,
+        amount_sats: int,
+        utxo_id: str,
+        request_timestamp: Optional[int] = 0
+    ):
+        sql = f"""INSERT INTO {self._tables} VALUES (?,?,?,?,?,?,?)"""
 
         Session.execute(
             sql,
@@ -85,7 +135,9 @@ class SignedSpends(BaseModel):
                 time.time(),
                 unsigned_psbt,
                 signed_psbt,
-                amount,
+                destination,
+                amount_sats,
+                utxo_id,
                 request_timestamp
             ]
         ).commit()
