@@ -91,6 +91,18 @@ class BitcoindRPC:
             [block_hash, target_confirmations, include_watchonly, include_removed]
         )
 
+    async def listunspent(
+        self,
+        minconf: Optional[int] = 1,
+        maxconf: Optional[int] = 9999999,
+        addresses: Optional[List] = None,
+        query_options: Optional[Dict] = None,
+    ):
+        return await self.async_call(
+            "listunspent",
+            [minconf, maxconf, addresses, query_options]
+        )
+
     async def scanblocks(
         self,
         action: Literal["start", "stop", "status"],
@@ -105,6 +117,35 @@ class BitcoindRPC:
             [action, scanobjects, start_height, stop_height, filtertype, options]
         )
 
+    async def getbalance(
+        self,
+        dummy: Optional[Literal["*"]] = "*",
+        minconf: Optional[int] = 0,
+        include_watchonly: Optional[bool] = False,  # True for watch-only wallets, otherwise false
+        avoid_reuse: Optional[bool] = True  # Only available if avoid_reuse wallet flag is set
+    ):
+        return await self.async_call(
+            "getbalance",
+            [dummy, minconf, include_watchonly, avoid_reuse]
+        )
+
+    async def getwalletinfo(self):
+        return await self.async_call("getwalletinfo", [])
+
+    async def gettransaction(
+        self,
+        txid: str,
+        include_watchonly: Optional[bool] = True,  # true for watch-only wallets, otherwise false
+        verbose: Optional[bool] = False
+    ):
+        """
+        <https://developer.bitcoin.org/reference/rpc/gettransaction.html>
+        """
+        return await self.async_call(
+            "gettransaction",
+            [txid, include_watchonly, verbose]
+        )
+        
     async def getrawtransaction(
         self,
         txid: str,
@@ -130,6 +171,20 @@ class BitcoindRPC:
         return await self.async_call(
             "createpsbt",
             [inputs, outputs, locktime, replaceable]
+        )
+
+    async def walletcreatefundedpsbt(
+        self,
+        outputs: List,
+        inputs: Optional[List] = [],
+        locktime: Optional[int] = 0,
+        options: Optional[Dict] = {},
+        bip32derivs: Optional[bool] = True
+    ):
+        # Todo: Test
+        return await self.async_call(
+            "walletcreatefundedpsbt", 
+            [inputs, outputs, locktime, options, bip32derivs]
         )
 
     async def analysepsbt(self, psbt: str):
@@ -179,45 +234,41 @@ class BitcoindRPC:
             [psbt, sign, sighashtype, bip32derivs]
         )
 
-    async def gettransaction(
+    async def importaddress(
         self,
-        txid: str,
-        include_watchonly: Optional[bool] = True,  # true for watch-only wallets, otherwise false
-        verbose: Optional[bool] = False
+        address: str,
+        label: Optional[str] = None,
+        rescan: Optional[bool] = True,
+        p2sh: Optional[bool] = False
     ):
-        """
-        <https://developer.bitcoin.org/reference/rpc/gettransaction.html>
-        """
-        return await self.async_call(
-            "gettransaction",
-            [txid, include_watchonly, verbose]
-        )
+        return await self.async_call("importaddress", [address, label, rescan, p2sh])
 
-    async def getbalance(
+    async def importmulti(self, request: List, options: Optional[Dict] = None):
+        return await self.async_call("importmulti", [request, options])
+
+    async def importdescriptors(self, request: List):
+        return await self.async_call("importdescriptors", [request])
+
+    async def getaddressinfo(self, address: str):
+        return await self.async_call("getaddressinfo", [address])
+
+    async def listwallets(self):
+        return await self.async_call("listwallets", [])
+
+    async def listwalletdir(self):
+        return await self.async_call("listwalletdir", [])
+
+    async def listreceivedbyaddress(
         self,
-        dummy: Optional[Literal["*"]] = "*",
-        minconf: Optional[int] = 0,
-        include_watchonly: Optional[bool] = False,  # True for watch-only wallets, otherwise false
-        avoid_reuse: Optional[bool] = True  # Only available if avoid_reuse wallet flag is set
+        minconf: Optional[int] = 1,
+        include_empty: Optional[bool] = False,
+        include_watchonly: Optional[bool] = True,
+        address_filter: Optional[str] = None
     ):
         return await self.async_call(
-            "getbalance",
-            [dummy, minconf, include_watchonly, avoid_reuse]
+            "listreceivedbyaddress",
+            [minconf, include_empty, include_watchonly, address_filter]
         )
-
-    async def getwalletinfo(self):
-        return await self.async_call("getwalletinfo", [])
 
     async def walletlock(self):
         return await self.async_call("walletlock", [])
-
-    async def walletcreatefundedpsbt(
-        self,
-        outputs: List,
-        inputs: Optional[List] = [],
-        locktime: Optional[int] = 0,
-        options: Optional[Dict] = {},
-        bip32derivs: Optional[bool] = True
-    ):
-        # Todo: Test
-        return await self.async_call(inputs, outputs, locktime, options, bip32derivs)
