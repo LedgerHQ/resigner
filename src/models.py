@@ -14,7 +14,7 @@ amount_sats INT NOT NULL
 UNIQUE (txid, vout)
 """
 
-SPENT_UTXOS_SCHEMA =  """CREATE TABLE SPENT_UTXOS 
+SPENT_UTXOS_SCHEMA = """CREATE TABLE SPENT_UTXOS
 (id INT PRIMARY KEY NOT NULL,
 txid VARCHAR NOT NULL,
 vout VARCHAR NOT NULL,
@@ -41,6 +41,7 @@ FOREIGN KEY (utxo_id) REFERENCES SPENT_UTXOS (id)
 );
 """
 
+
 class BaseModel:
     _cursor: Any = None
 
@@ -54,7 +55,7 @@ class BaseModel:
     def get(self, *args):
         sql_query = f"""SELECT {",".join(args)} from {self._table}"""
         self._cursor = Session.execute(sql_query)
-        
+
         result = {}
         for row in self._cursor:
             for i in range(len(args)):
@@ -80,6 +81,7 @@ class BaseModel:
     def filter(self):
         raise NotImplementedError
 
+
 class Utxos(BaseModel):
     _table: str = "UTXOS"
     _primary_key: bool = True
@@ -88,9 +90,10 @@ class Utxos(BaseModel):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?)"""
 
         Session.execute(
-            sql, 
+            sql,
             [blockheight, blocktime, txid, vout, amount_sats]
         ).commit()
+
 
 class SpentUtxos(BaseModel):
     _table: str = "SPENT_UTXOS"
@@ -110,7 +113,6 @@ class AggregateSpends(BaseModel):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?)"""
 
         Session.execute(sql, [daily_spends, weekly_spends, monthly_spends]).commit()
-
 
 
 class SignedSpends(BaseModel):

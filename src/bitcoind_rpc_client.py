@@ -111,7 +111,7 @@ class BitcoindRPC:
         stop_height: Optional[int] = None,
         filtertype: Optional[str] = "basic",
         options: Optional[Dict] = None
-        ):
+    ):
         return await self.async_call(
             "scanblocks",
             [action, scanobjects, start_height, stop_height, filtertype, options]
