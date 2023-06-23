@@ -2,7 +2,6 @@ import time
 
 from config import Configuration
 from bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
-from db import Session
 from models import AggregateSpends
 
 
@@ -32,16 +31,17 @@ class SpendingLimit(Policy):
     daily_limit: int
     weekly_limit: int
     monthly_limit: int
+    condition: bool = False  # So we fail if policy is not executed
 
     def __init__(self, btdClient: BitcoindRPC, config: Configuration):
         self._btdClient = btdClient
         self._config = config
-        
+    
         # Set limits to zero if not defined
         try:
             spend_cond = config.get_value("spending_conditions")
-            
-            self.daily_limit = spend_cond["daily_limit"] if "daily_limit" in spend_cond else 0     
+
+            self.daily_limit = spend_cond["daily_limit"] if "daily_limit" in spend_cond else 0
             self.weekly_limit = spend_cond["weekly_limit"] if "weekly_limit" in spend_cond else 0
             self.monthly_limit = spend_cond["monthly_limit"] if "monthly_limit" in spend_cond else 0
         except TypeError:
@@ -53,21 +53,24 @@ class SpendingLimit(Policy):
         else:
             return False
 
-    # Get aggregate historical spends
-    def aggregate_spends(self, block_height):
-        block_height = self._btdClient.getblockcount()
-        # Calculate no of blocks created since last?
-        n_blocks_since_last_day = (self._hrs_passed_since_last_day * 60) / 10
-        n_blocks_since_last_week = (self._days_passed_since_last_week * 24 * 60) / 10 
-        n_blocks_since_last_month = (self._days_passed_since_last_month * 24 * 60) / 10
+    def execute_policy(self, **kwargs):
 
-        pass
+        if self.is_defined():
+            aggregate_spend = AggregateSpends.get("daily_spends", "weekly_spends", "monthly_spends")
 
-    def execute_policy(self):
-     
-        
+            if self.daily_limit > 0:
+                self.condition = aggregate_spend["daily_spends"] < self.daily_limit and \
+                    (aggregate_spend["daily_spends"] + kwargs["amount_sats"]) < self.daily_limit
 
+            if self.weekly_limit > 0:
+                self.condition = aggregate_spend["weekly_spends"] < self.weekly_limit and \
+                    (aggregate_spend["weekly_spends"] + kwargs["amount_sats"]) < self.weekly_limit
 
+            if self.monthly_limit > 0:
+                self.condition = aggregate_spend["monthly_spends"] < self.monthly_limit and \
+                    (aggregate_spend["monthly_spends"] + kwargs["amount_sats"]) < self.monthly_limit
+
+        return self.condition
 
     @property
     def __t_struct(self):
@@ -86,10 +89,25 @@ class SpendingLimit(Policy):
 
     @property
     def _days_passed_since_last_month(self):
-       return self.__t_struct.tm_mday
+        return self.__t_struct.tm_mday
+
+    """ We are approximating the number of blocks buy using the average number of blocks created in a day.
+    This is reasonably fair as the number of blocks created in a day is usually consistent with 144.
+    Note: a better approach to determining the number of blocks created since a certain time would be
+    to count from the first block with a timestamp after the last period to the best block.
+    """
+    @property
+    def _blocks_created_since_last_day(self):
+        return self._hrs_passed_since_last_day * 6
+
+    @property
+    def _blocks_created_since_last_week(self):
+        return (self.__t_struct.tm_wday + 1) * 144
+
+    @property
+    def _blocks_created_since_last_month(self):
+        return self.__t_struct.tm_mday * 144
 
 
 class TFAPolicy(Policy):
     pass
-
-
