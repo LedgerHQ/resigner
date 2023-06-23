@@ -145,7 +145,7 @@ class BitcoindRPC:
             "gettransaction",
             [txid, include_watchonly, verbose]
         )
-        
+
     async def getrawtransaction(
         self,
         txid: str,
@@ -183,7 +183,7 @@ class BitcoindRPC:
     ):
         # Todo: Test
         return await self.async_call(
-            "walletcreatefundedpsbt", 
+            "walletcreatefundedpsbt",
             [inputs, outputs, locktime, options, bip32derivs]
         )
 
