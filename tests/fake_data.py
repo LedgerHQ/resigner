@@ -13,7 +13,7 @@ def fake_data():
     # Insert Utxos data
     Utxos.insert(
         40,
-        time.time()-21200,
+        168773138,
         "67d4fe1ef563778fcbed99602788bf645fa961e3211e677573e38aec11f1d19a",
         0,
         36867904    
@@ -44,6 +44,6 @@ def fake_data():
         destination="bcrt1q0qjqsqessarh39628z0y9pa5l2yga84xnsnj2v",
         amount_sats=21333455,
         utxo_id=1,
-        request_timestamp=time.time()-3600
+        request_timestamp=1687786138
 
     )

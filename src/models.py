@@ -10,7 +10,7 @@ blockheight INT NOT NULL,
 blocktime INT NOT NULL,
 txid VARCHAR NOT NULL,
 vout INT NOT NULL,
-amount_sats INT NOT NULL
+amount_sats INT NOT NULL,
 UNIQUE (txid, vout)
 """
 
@@ -22,7 +22,7 @@ SPENT_UTXOS_SCHEMA = """CREATE TABLE SPENT_UTXOS
 txid VARCHAR NOT NULL,
 vout VARCHAR NOT NULL,
 tx_spending_utxo INT NOT NULL,
-FOREIGN KEY (tx_spending_utxo) REFERENCES SIGNED_SPENDS(id)
+FOREIGN KEY (tx_spending_utxo) REFERENCES SIGNED_SPENDS(id),
 FOREIGN KEY (id) REFERENCES UTXOS(id)
 )
 """
@@ -60,7 +60,7 @@ class BaseModel:
 
     @classmethod
     def get(self, *args):
-        sql_query = f"""SELECT {",".join(args)} from {self._table}"""
+        sql_query = f"""SELECT {",".join(args)} from {self._table};"""
         self._cursor = Session.execute(sql_query)
 
         result = {}
@@ -80,7 +80,7 @@ class BaseModel:
 
         sql = f"""UPDATE {self._table}
         SET {", ".join(query)}
-        {condition}
+        {condition};
         """
 
         Session.execute(sql).commit()
@@ -89,6 +89,22 @@ class BaseModel:
     def filter(self):
         raise NotImplementedError
 
+    @classmethod
+    def delete(self, condition: str):
+        sql_query = f"""DELETE FROM {self._table} WHERE {condition};"""
+
+        Session.execute(sql_query).commit()
+
+    @classmethod
+    def delete_table(self):
+        """Drop table from DB"""
+        sql_query = f"DROP TABLE {self._table};"
+
+        Session.execute(sql_query).commit()
+
+
+
+
 
 class Utxos(BaseModel):
     _table: str = "UTXOS"
@@ -96,7 +112,7 @@ class Utxos(BaseModel):
 
     @classmethod
     def insert(self, blockheight: int, blocktime: int, txid: str, vout: int, amount_sats: int):
-        sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?)"""
+        sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?);"""
 
         Session.execute(
             sql,
@@ -110,7 +126,7 @@ class SpentUtxos(BaseModel):
 
     @classmethod
     def insert(self, txid: str, vout: int, tx_spending_utxo: int):
-        sql = f"""INSERT INTO {self._table} VALUES (?,?,?)"""
+        sql = f"""INSERT INTO {self._table} VALUES (?,?,?);"""
 
         Session.execute(sql, [txid, vout, tx_spending_utxo]).commit()
 
@@ -121,7 +137,7 @@ class AggregateSpends(BaseModel):
 
     @classmethod
     def insert(self, daily_spends: int = 0, weekly_spends: int = 0, monthly_spends: int = 0):
-        sql = f"""INSERT INTO {self._table} VALUES (?,?,?)"""
+        sql = f"""INSERT INTO {self._table} VALUES (?,?,?);"""
 
         Session.execute(sql, [daily_spends, weekly_spends, monthly_spends]).commit()
 
@@ -140,7 +156,7 @@ class SignedSpends(BaseModel):
         utxo_id: str,
         request_timestamp: Optional[int] = 0
     ):
-        sql = f"""INSERT INTO {self._tables} VALUES (?,?,?,?,?,?,?)"""
+        sql = f"""INSERT INTO {self._tables} VALUES (?,?,?,?,?,?,?);"""
 
         Session.execute(
             sql,
