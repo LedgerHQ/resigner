@@ -59,8 +59,21 @@ class BaseModel:
         raise NotImplementedError
 
     @classmethod
-    def get(self, *args):
-        sql_query = f"""SELECT {",".join(args)} from {self._table};"""
+    def get(self, *args, condition: Optional[Dict] = {}):
+        query_condition = []  # f"Where {condition}" if condition else ""
+        query = ""
+
+        if bool(condition):
+            for key, value in condition.items():
+                query_condition.append(f"{key} = {value} ")
+
+            query = f"Where {query_condition}"
+
+        sql_query = f"""SELECT {",".join(args)}
+            From {self._table}
+            {query};
+        """
+        
         self._cursor = Session.execute(sql_query)
 
         result = {}
@@ -72,15 +85,25 @@ class BaseModel:
 
 
     @classmethod
-    def update(self, options: Dict, condition: Optional[str] = ""):
+    def update(self, options: Dict, condition: Optional[Dict] = {}):
         """'condition' is piece of sql containing with the 'where' clause"""
+        query_condition = []  # f"Where {condition}" if condition else ""
+        condition_query = ""
+
+        if bool(condition):
+            for key, value in condition.items():
+                query_condition.append(f"{key} = {value} ")
+
+            condition_query = f"Where {query_condition}"
+
         query = []
         for key, value in options.items():
             query.append(f" {key} = {value}")
 
+
         sql = f"""UPDATE {self._table}
         SET {", ".join(query)}
-        {condition};
+        {condition_query};
         """
 
         Session.execute(sql).commit()
