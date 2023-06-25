@@ -3,7 +3,7 @@ from typing import Any, List, Dict, Optional
 
 from db import Session
 
-
+# Our coins
 UTXOS_SCHEMA = """CREATE TABLE UTXOS
 id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
 blockheight INT NOT NULL,
@@ -14,6 +14,9 @@ amount_sats INT NOT NULL
 UNIQUE (txid, vout)
 """
 
+# Table containing utxos that have been have been signed but has not yet been committed
+# to the blockchain or has been commited to the blockchain but does not have enough
+#confirmations to survive a blockchain reorganisation
 SPENT_UTXOS_SCHEMA = """CREATE TABLE SPENT_UTXOS
 (id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
 txid VARCHAR NOT NULL,
@@ -31,6 +34,7 @@ monthly_spends INT
 );
 """
 
+# Spend transaction, since we are not responsible for finalizing the transactions
 SIGNED_SPENDS_SCHEMA = """CREATE TABLE SIGNED_SPENDS
 (id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
 processed_at INT NOT NULL,
@@ -66,9 +70,10 @@ class BaseModel:
 
         return result
 
-    # 'condition' is piece of sql containing with the 'where' clause
+
     @classmethod
     def update(self, options: Dict, condition: Optional[str] = ""):
+        """'condition' is piece of sql containing with the 'where' clause"""
         query = []
         for key, value in options.items():
             query.append(f" {key} = {value}")
@@ -89,6 +94,7 @@ class Utxos(BaseModel):
     _table: str = "UTXOS"
     _primary_key: bool = True
 
+    @classmethod
     def insert(self, blockheight: int, blocktime: int, txid: str, vout: int, amount_sats: int):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?)"""
 
@@ -102,6 +108,7 @@ class SpentUtxos(BaseModel):
     _table: str = "SPENT_UTXOS"
     _primary_key: bool = True
 
+    @classmethod
     def insert(self, txid: str, vout: int, tx_spending_utxo: int):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?)"""
 
@@ -112,6 +119,7 @@ class AggregateSpends(BaseModel):
     _table: str = "AGGREGATE_SPENDS"
     _primary_key: bool = False
 
+    @classmethod
     def insert(self, daily_spends: int = 0, weekly_spends: int = 0, monthly_spends: int = 0):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?)"""
 
