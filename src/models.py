@@ -5,7 +5,7 @@ from db import Session
 
 
 UTXOS_SCHEMA = """CREATE TABLE UTXOS
-id INT PRIMARY KEY NOT NULL,
+id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
 blockheight INT NOT NULL,
 blocktime INT NOT NULL,
 txid VARCHAR NOT NULL,
@@ -15,9 +15,11 @@ UNIQUE (txid, vout)
 """
 
 SPENT_UTXOS_SCHEMA = """CREATE TABLE SPENT_UTXOS
-(id INT PRIMARY KEY NOT NULL,
+(id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
 txid VARCHAR NOT NULL,
 vout VARCHAR NOT NULL,
+tx_spending_utxo INT NOT NULL,
+FOREIGN KEY (tx_spending_utxo) REFERENCES SIGNED_SPENDS(id)
 FOREIGN KEY (id) REFERENCES UTXOS(id)
 )
 """
@@ -30,7 +32,8 @@ monthly_spends INT
 """
 
 SIGNED_SPENDS_SCHEMA = """CREATE TABLE SIGNED_SPENDS
-(processed_at INT PRIMARY KEY NOT NULL,
+(id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
+processed_at INT NOT NULL,
 unsigned_psbt VARCHAR NOT NULL,
 signed_psbt VARCHAR NOT NULL,
 destination VARCHAR NOT NULL,
@@ -99,10 +102,10 @@ class SpentUtxos(BaseModel):
     _table: str = "SPENT_UTXOS"
     _primary_key: bool = True
 
-    def insert(self, txid: str, vout: int):
-        sql = f"""INSERT INTO {self._table} VALUES (?,?)"""
+    def insert(self, txid: str, vout: int, tx_spending_utxo: int):
+        sql = f"""INSERT INTO {self._table} VALUES (?,?,?)"""
 
-        Session.execute(sql, [txid, vout]).commit()
+        Session.execute(sql, [txid, vout, tx_spending_utxo]).commit()
 
 
 class AggregateSpends(BaseModel):
