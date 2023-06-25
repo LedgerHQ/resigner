@@ -1,5 +1,7 @@
 import time
 
+from typing import List, Dict,
+
 from config import Configuration
 from bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
 from models import AggregateSpends
@@ -27,7 +29,18 @@ class Policy():
         raise NotImplementedError
 
 
-class SpendingLimit(Policy):
+class PolicyHandler:
+    __policy_list = []
+
+    def register_policy(self, policy: Policy):
+        self.__policy_list.append(policy)
+
+    def run(self, **kwargs):
+        for policy in self.__policy_list:
+            policy.execute_policy(**kwargs)
+
+
+class SpendLimit(Policy):
     daily_limit: int
     weekly_limit: int
     monthly_limit: int
@@ -45,7 +58,7 @@ class SpendingLimit(Policy):
             self.weekly_limit = spend_cond["weekly_limit"] if "weekly_limit" in spend_cond else 0
             self.monthly_limit = spend_cond["monthly_limit"] if "monthly_limit" in spend_cond else 0
         except TypeError:
-            pass
+            pass  # Todo
 
     def is_defined(self):
         if self.daily_limit or self.weekly_limit or self.monthly_limit:
