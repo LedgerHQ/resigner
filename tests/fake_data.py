@@ -1,5 +1,3 @@
-import time
-
 from ..src.models import (
     Utxos,
     SpentUtxos,
