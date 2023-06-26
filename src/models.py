@@ -60,7 +60,7 @@ class BaseModel:
 
     @classmethod
     def get(self, *args, condition: Optional[Dict] = {}):
-        query_condition = []  # f"Where {condition}" if condition else ""
+        query_condition = []
         query = ""
 
         if bool(condition):
@@ -76,18 +76,20 @@ class BaseModel:
         
         self._cursor = Session.execute(sql_query)
 
-        result = {}
+        result = []
         for row in self._cursor:
+            row_dict = {}
             for i in range(len(args)):
-                result[args[i]] = row[i]
+                row_dict[args[i]] = row[i]
+
+            result.append(row_dict)
 
         return result
 
 
     @classmethod
     def update(self, options: Dict, condition: Optional[Dict] = {}):
-        """'condition' is piece of sql containing with the 'where' clause"""
-        query_condition = []  # f"Where {condition}" if condition else ""
+        query_condition = []
         condition_query = ""
 
         if bool(condition):
