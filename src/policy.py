@@ -52,7 +52,7 @@ class SpendLimit(Policy):
     
         # Set limits to zero if not defined
         try:
-            spend_cond = config.get_value("spending_conditions")
+            spend_cond = config.get("spending_conditions")
 
             self.daily_limit = spend_cond["daily_limit"] if "daily_limit" in spend_cond else 0
             self.weekly_limit = spend_cond["weekly_limit"] if "weekly_limit" in spend_cond else 0
@@ -87,10 +87,10 @@ class SpendLimit(Policy):
 
     @property
     def __t_struct(self):
-        if not self._config.get_value("use_servertime"):
+        if not self._config.get("use_servertime"):
             return time.gmtime()
         else:
-            return time.gmtime(time.time() - self._config.get_value("utc_offset"))
+            return time.gmtime(time.time() - self._config.get("utc_offset"))
 
     @property
     def _hrs_passed_since_last_day(self):

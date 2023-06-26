@@ -1,5 +1,6 @@
-import time
+import os
 import sys
+import time
 
 import toml
 from toml import TomlDecodeError
@@ -27,8 +28,12 @@ class Configuration:
 
         if "use_servertime" not in self.config:
             self.config["use_servertime"] = True
+
+        # Get bitcoind rpc_user and password from env
+        self.config["bitcoind_rpc_user"] = os.getenv("RPC_USER")
+        self.config["bitcoind_rpc_password"] = os.getenv("RPC_PASSWORD") 
  
-    def get_value(self, key: str):
+    def get(self, key: str):
         if key in self.config:
             return self.config[key]
         else:
