@@ -18,7 +18,7 @@ class BitcoindRPC:
     We intend to support only the RPC's we need for this project
     <https://developer.bitcoin.org/reference/rpc/index.html>
     """
-    def __init__(self, url: str, rpc_user: str, rpc_password: str, **options: Any):
+    def __init__(self, url: str, rpc_user: str, rpc_password: str, **options: Dict):
         self._url = url
 
         # Configure `httpx.AsyncClient`.
