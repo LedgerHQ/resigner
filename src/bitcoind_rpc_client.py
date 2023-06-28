@@ -68,15 +68,21 @@ class BitcoindRPC:
     async def getblockheader(self, block_hash: str, verbose: bool = True):
         return await self.async_call("getblockheader", [block_hash, verbose])
 
-    async def getblockstats(self, hash_or_height: Union[int, str], *keys: str, timeout: Optional[float] = 5.0):
+    async def getblockstats(self, hash_or_height: Union[int, str], *keys: str):
         return await self.async_call(
             "getblockstats",
             [hash_or_height, list(keys) or None],
         )
 
-    async def getblock(self, block_hash: str, verbosity: Literal[0, 1, 2] = 1, timeout: Optional[float] = 5.0):
+    async def getblock(self, block_hash: str, verbosity: Literal[0, 1, 2] = 1):
         return await self.async_call(
-            "getblock", [block_hash, verbosity], timeout=httpx.Timeout(timeout)
+            "getblock", [block_hash, verbosity]
+        )
+
+    async def gettxout(self, txid: str, n: int, include_mempool: Optional[bool] = True):
+        return await self.async_call(
+            "gettxout",
+            [txid, n, include_mempool]
         )
 
     async def listsinceblock(
