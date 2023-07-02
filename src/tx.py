@@ -17,10 +17,10 @@ CTransaction,CTxIn, CTxOut, etc....:
 import copy
 import struct
 
-from .common import (
+from .helper import (
     hash256,
 )
-from ._script import (
+from .script import (
     is_opreturn,
     is_p2sh,
     is_p2pkh,

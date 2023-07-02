@@ -13,7 +13,7 @@ Classes and utilities for working with extended public keys, key origins, and ot
 """
 
 from . import _base58 as base58
-from .common import (
+from .helper import (
     AddressType,
     Chain,
     hash256,
