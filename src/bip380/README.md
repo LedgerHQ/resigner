@@ -1,0 +1,1 @@
+This folder was imported from https://github.com/darosior/python-bip380. It's meant to be used in analysing miniscript output descriptors and deriving keys.
