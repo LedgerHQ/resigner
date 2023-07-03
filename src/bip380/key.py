@@ -212,7 +212,12 @@ class DescriptorKey:
                 try:
                     self.key = BIP32.from_xpub(key)
                 except ValueError as e:
-                    raise DescriptorKeyError(f"Xpub parsing error: '{str(e)}'")
+                    # Check if key is an xpriv
+                    try:
+                        bip32 = BIP32.from_xpriv(key)
+                        self.key = BIP32.from_xpub(bip32.get_xpub())
+                    except ValueError as e:
+                        raise DescriptorKeyError(f"Xpub parsing error: '{str(e)}'")
 
         else:
             raise DescriptorKeyError(
