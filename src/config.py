@@ -3,7 +3,6 @@ import sys
 import time
 
 import toml
-from toml import TomlDecodeError
 
 
 def get_utc_offset():
@@ -19,7 +18,7 @@ class Configuration:
     def __init__(self, config_path: str):
         try:
             self.config = toml.load(config_path)
-        except TomlDecodeError as err:
+        except toml.TomlDecodeError as err:
             print(f"An error occurred while parsing {config_path}: ", err)
             sys.exit(1)  # Refactor
 
@@ -29,9 +28,12 @@ class Configuration:
         if "use_servertime" not in self.config:
             self.config["use_servertime"] = True
 
-        # Get bitcoind rpc_user and password from env
-        self.config["bitcoind_rpc_user"] = os.getenv("RPC_USER")
-        self.config["bitcoind_rpc_password"] = os.getenv("RPC_PASSWORD") 
+        # Get bitcoind rpc_user and password from env if not in config
+        if "bitcoind" not in self.config:
+            if "bitcoind_rpc_user" not in self.config["bitcoind"]:
+                self.config["bitcoind"] = {"bitcoind_rpc_user": os.getenv("RPC_USER")}
+            elif "bitcoind_rpc_password" not in self.config["bitcoind"]:
+                self.config["bitcoind"] = {"bitcoind_rpc_password": os.getenv("RPC_PASSWORD")}
  
     def get(self, key: str):
         if key in self.config:
