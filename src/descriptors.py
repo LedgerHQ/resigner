@@ -33,10 +33,23 @@ class InvalidDescriptor(DescriptorError):
 
 def descriptor_analysis(desc: str):
     wsh_desc: WshDescriptor = None
+    min_secs: int = 7776000  # Minimum time that should elapse before a user can spend without Resigner
+    min_blocks: int = 12960  # Minimum amount of blocks to be created before a user can spend without Resigner
+
+    max_secs: int  # Maximum time that should elapse in unixtime(seconds) before a user can spend without Resigner
+    max_blocks:int  # Maximum amount of blocks created before a user can spend without Resigner
+
+
+    # Example of miniscript policy patterns for use with Resigner
+    # and_v(or_c(pk(resigner),v:older(1004)),multi(1,participant_1,participant_2))
+    # and_v(v:pk(user),or_d(pk(resigner),older(12960)))
 
     # We only support p2wsh at this time.
     if desc.startswith("wsh(") and desc.endswith(")"):
-        wsh_desc = Descriptor.from_str(desc)
+        try:
+            wsh_desc = Descriptor.from_str(desc)
+        except DescriptorParsingError as e:
+            raise InvalidDescriptor(e)
     elif desc.startswith("tr(") and desc.endswith(")"):
         #TODO: add taproot support
         raise NotImplementedError("taproot support not implemented")
@@ -70,7 +83,7 @@ def descriptor_analysis(desc: str):
     # an xpub to other participants.
 
     service_key = None  # our key
-    for key in wsh_desc:
+    for key in wsh_desc.keys:
         if key.derived_from_xpriv:
             service_key = key
             path = service_key.derivation_path()
@@ -83,18 +96,19 @@ def descriptor_analysis(desc: str):
     if not service_key:
         raise IncompatibleDescriptor("Signing key not in descriptor!")
 
-    # Check that policy is consistent with Resigner policy. Resigner policy requires that
-    # 1. No satisfactions that doesn't require the services' key exist in the miniscript 
-    # 2. Any other satisfactions to the miniscript be on the condition that a relative block count
-    #    unix time has elapsed.
-
     # Top-level satisfactions should require a signature. Is this necessary?
     if not wsh_desc.needs_sig:
         raise InvalidDescriptor("Top level sats should require signatures")
 
+    # Check that policy is consistent with Resigner policy. Resigner policy requires that
+    # 1. No satisfactions that doesn't require the services' signature exist's in the miniscript 
+    # 2. Any other satisfactions to the miniscript be on the condition that a relative block count
+    #    unix time has elapsed.
+
     # All second-level nodes? having sats not requiring a signature should be timelocks.
     # We ignore preimages. Those shouldn't be in the second level anyway? 
 
+    key
     for sub in wsh_desc.subs:
         if not sub.needs_sig:
             if (not sub.rel_timelocks
@@ -105,3 +119,22 @@ def descriptor_analysis(desc: str):
             raise IncompatibleDescriptor("All second level miniscript node sats should include\
                 signatures or be timelocks.")
 
+        if sub.rel_heightlocks or sub.rel_timelocks:
+            if len(sub.keys) == 1:
+                key = sub.keys[0]
+                if key.derived_from_xpriv:
+                    if not str(service_key) == str(key):
+                        raise IncompatibleDescriptor("There are multiple xprivs in descriptor.")
+                    if len(sub.subs) == 2:  # Cannot fail now
+                        for sub in sub.subs:
+                            if sub.rel_heightlocks or sub.rel_timelocks:
+                                if sub.rel_heightlocks:
+                                    if sub.value < min_secs:
+                                        raise IncompatibleDescriptor("minimum nsequence in seconds: {min_secs}.\
+                                            But was set to {sub}")
+                                if sub.rel_timelocks:
+                                    if sub.value < min_blocks:
+                                        raise IncompatibleDescriptor("minimum nsequence in seconds: {min_blocks}.\
+                                            But was set to {sub}")
+                            if sub.needs_sig:
+                                pass
