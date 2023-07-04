@@ -160,6 +160,8 @@ class DescriptorKey:
         # Whether to serialize to string representation without the sign byte.
         # This is necessary to roundtrip 33-bytes keys under Taproot context.
         self.ser_x_only = x_only
+        # whether this key was derived from an xpriv: that's how we know our key.
+        self.derived_from_xpriv = None
 
         if isinstance(key, bytes):
             if len(key) == 32:
@@ -216,6 +218,7 @@ class DescriptorKey:
                     try:
                         bip32 = BIP32.from_xpriv(key)
                         self.key = BIP32.from_xpub(bip32.get_xpub())
+                        self.derived_from_xpriv = True
                     except ValueError as e:
                         raise DescriptorKeyError(f"Xpub parsing error: '{str(e)}'")
 
