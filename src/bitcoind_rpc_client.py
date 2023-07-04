@@ -240,6 +240,29 @@ class BitcoindRPC:
             [psbt, sign, sighashtype, bip32derivs]
         )
 
+    async def createwallet(
+        self,
+        wallet_name: str,
+        disable_private_keys: Optional[bool] = False,
+        blank: Optional[bool] = False,
+        passphrase: Optional[str] = "",
+        avoid_reuse: Optional[bool] = False,
+        descriptors: Optional[bool] = False,
+        load_on_startup: Optional[bool] = False 
+    ):
+        return await self.async_call(
+            "createwallet",
+            [
+                wallet_name,
+                disable_private_keys,
+                blank,
+                passphrase,
+                avoid_reuse,
+                descriptors,
+                load_on_startup
+            ]
+        )
+
     async def importaddress(
         self,
         address: str,
@@ -254,6 +277,12 @@ class BitcoindRPC:
 
     async def importdescriptors(self, request: List):
         return await self.async_call("importdescriptors", [request])
+
+    async def getnewaddress(self, label, address_type):
+        return await self.async_call(
+            "getnewaddress",
+            [label, address_type]  # TODO: figure out some way to set -rpcwallet
+        )
 
     async def getaddressinfo(self, address: str):
         return await self.async_call("getaddressinfo", [address])
