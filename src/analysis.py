@@ -33,7 +33,7 @@ class InvalidDescriptor(DescriptorError):
         self.message = message
 
 
-def descriptor_analysis(desc: str, config: Configuration):
+def descriptor_analysis(desc: str, config: Configuration) -> None:
     wsh_desc: WshDescriptor = None
     min_secs: int = 7776000  # Minimum time that should elapse before a user can spend without Resigner
     min_blocks: int = 12960  # Minimum amount of blocks to be created before a user can spend without Resigner
@@ -234,7 +234,7 @@ class Psbt:
         # if the serialised transaction cannot be validated there after.
 
 
-def psbt_analysis(psbt: str, config: Configuration):
+def psbt_analysis(psbt: str, config: Configuration) -> None:
     """
     :param psbt: base64 encoded string.
     """
