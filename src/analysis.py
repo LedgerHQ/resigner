@@ -4,7 +4,7 @@ from bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
 from bip380.descriptors import Descriptor, WshDescriptor, SatisfactionMaterial, DescriptorParsingError
 from crypto.hd import HDPrivateKey, HDPublicKey
 from config import Configuration
-from psbt import PSBT
+# from psbt import PSBT
 
 
 class DescriptorError(Exception):
@@ -33,7 +33,7 @@ class InvalidDescriptor(DescriptorError):
         self.message = message
 
 
-def descriptor_analysis(desc: str):
+def descriptor_analysis(desc: str, config: Configuration):
     wsh_desc: WshDescriptor = None
     min_secs: int = 7776000  # Minimum time that should elapse before a user can spend without Resigner
     min_blocks: int = 12960  # Minimum amount of blocks to be created before a user can spend without Resigner
@@ -110,7 +110,8 @@ def descriptor_analysis(desc: str):
     # All second-level nodes? having sats not requiring a signature should be timelocks.
     # We ignore preimages. Those shouldn't be in the second level anyway? 
 
-    key
+    key = None
+    min_required_sigs = 0
     for sub in wsh_desc.subs:
         if not sub.needs_sig:
             if (not sub.rel_timelocks
@@ -139,7 +140,13 @@ def descriptor_analysis(desc: str):
                                         raise IncompatibleDescriptor("minimum nsequence in seconds: {min_blocks}.\
                                             But was set to {sub}")
                             if sub.needs_sig:
-                                pass
+                                # Minimum no of signature required to satisfy miniscript
+                                min_required_sigs += 1
+                if sub.needs_sig:
+                    # Minimum no of signature required to satisfy miniscript
+                    min_required_sigs += 1 
+    if min_required_sigs > 0:
+        config.set({"min_required_sigs": min_required_sigs}, "wallet")
 
 
 class Utxos(TypedDict):
@@ -160,7 +167,7 @@ class Recipient(TypedDict):
 
 class Psbt:
     psbt_str: str
-    psbt: PSBT
+    # psbt: PSBT
     _config: Configuration
     utxos: List[Utxos] = []  # Utxos we control
     third_party_utxos: List[Utxos] = []
@@ -174,7 +181,7 @@ class Psbt:
     def __init__(self, psbt: str, config: Configuration):
         self.psbt_str = psbt
         self._config = config
-        self.psbt = PSBT()
+        # self.psbt = PSBT()
         bitcoin_conf = config.get("bitcoind")
         self._btdc = BitcoindRPC(
             bitcoin_conf["rpc_url"],
@@ -225,3 +232,13 @@ class Psbt:
         # check that the witness script passes with the available signatures
         # we preferably would not return a psbt with the signing service's signature,
         # if the serialised transaction cannot be validated there after.
+
+
+def psbt_analysis(psbt: str, config: Configuration):
+    """
+    :param psbt: base64 encoded string.
+    """
+    psbt_obj = Psbt(psbt, config)
+
+    # Todo: Add checks to ensure transaction encoded PSBT meets our specification
+    # before signing 
