@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from typing import Union, Dict
 
 import toml
 
@@ -35,8 +36,15 @@ class Configuration:
             elif "bitcoind_rpc_password" not in self.config["bitcoind"]:
                 self.config["bitcoind"] = {"bitcoind_rpc_password": os.getenv("RPC_PASSWORD")}
  
-    def get(self, key: str):
+    def get(self, key: str) -> Union[Dict, str]:
         if key in self.config:
             return self.config[key]
         else:
             raise TypeError(f"requested key: {key} not in configuration")
+
+    def set(self, key: Dict, section: str = None) -> None:
+        if isinstance(key, Dict):
+            if section:
+                self.config[section].update(key)
+            else:
+                self.config.update(key)
