@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from typing import Union, Dict
 
 import toml
 
@@ -40,3 +41,10 @@ class Configuration:
             return self.config[key]
         else:
             raise TypeError(f"requested key: {key} not in configuration")
+
+    def set(self, key: Dict, section: str = None):
+        if isinstance(key, Dict):
+            if section:
+                self.config[section].update(key)
+            else:
+                self.config.update(key)
