@@ -1,37 +1,25 @@
 from typing import Any, List, TypedDict, Optional
 
-from errors import PSBTPartialSignatureCountError, UnsafePSBTError
+from errors import (
+    PSBTPartialSignatureCountError,
+    UnsafePSBTError,
+    InsaneTimelock,
+    DuplicateKey,
+    IncompatibleDescriptor,
+    InvalidDescriptor
+)
+
 from bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
-from bip380.descriptors import Descriptor, WshDescriptor, SatisfactionMaterial, DescriptorParsingError
+from bip380.descriptors import (
+    Descriptor,
+    WshDescriptor,
+    SatisfactionMaterial,
+    DescriptorParsingError
+)
+
 from crypto.hd import HDPrivateKey, HDPublicKey
 from config import Configuration
 # from psbt import PSBT
-
-
-class DescriptorError(Exception):
-    pass
-
-
-class InsaneTimelock(DescriptorError):
-    def __init__(self, message = "Timelock specified in miniscript is unreasonable"):
-        self.message = message
-
-
-class DuplicateKey(DescriptorError):
-    def __init__(self, message="Duplicate keys exist in Descriptor"):
-        self.message = message
-
-
-class IncompatibleDescriptor(DescriptorError):
-    def __init__(self, message="Descriptor policy specified is incompatible with Resigner"):
-        self.message = message
-
-
-class InvalidDescriptor(DescriptorError):
-    """Basically every other error generated from bip380"""
-
-    def __init__(self, message):
-        self.message = message
 
 
 def descriptor_analysis(desc: str, config: Configuration) -> None:
@@ -237,7 +225,7 @@ class Psbt:
 
         if not self.safe_to_sign:
             raise UnsafePSBTError
-            
+
         # TODO: check that psbt contain enough signatures, such that we can finalise the psbt with our signature
         # check that the witness script passes with the available signatures
         # we preferably would not return a psbt with the signing service's signature,
