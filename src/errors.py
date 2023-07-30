@@ -47,9 +47,13 @@ class PSBTError(Exception):
 
 class UnsafePSBTError(PSBTError):
     def __init__(self, message = "PSBT failed to meet requirements for signing"):
-    self.message = message
+        self.message = message
 
 
 class PSBTPartialSignatureCountError(PSBTError):
     def __init__(self, message = "PSBT contains fewer partial signatures than required"):
-    self.message = message
+        self.message = message
+
+class ServerError(Exception):
+    def __init__(self, message):
+        self.message = message
