@@ -1,6 +1,6 @@
 import time
 
-from typing import List, Dict,
+from typing import List, Dict
 
 from config import Configuration
 from bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
