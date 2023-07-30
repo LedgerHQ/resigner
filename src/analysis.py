@@ -1,5 +1,6 @@
 from typing import Any, List, TypedDict, Optional
 
+from errors import PSBTPartialSignatureCountError, UnsafePSBTError
 from bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
 from bip380.descriptors import Descriptor, WshDescriptor, SatisfactionMaterial, DescriptorParsingError
 from crypto.hd import HDPrivateKey, HDPublicKey
@@ -189,7 +190,9 @@ class Psbt:
             bitcoin_conf["bitcoind_rpc_password"]
         )
 
-    def analyse(self):
+        self.__analyse()
+
+    def __analyse(self):
         self.psbt.deserialize(self.psbt_str)
         decoded_psbt = self._btdc.decodepsbt(self._psbt)
         decoded_psbt = self._btdc.analysepsbt(self._psbt)
@@ -225,20 +228,17 @@ class Psbt:
         
         #self.can_spend_all_utxo
 
-        num_of_sigs = len(decoded_psbt["partial_signatures"])
-        self.contains_partial_signature = num_of_sigs > 0
+        self.num_of_sigs = len(decoded_psbt["partial_signatures"])
+        self.contains_partial_signature = self.num_of_sigs > 0
 
+        wallet = config.get("wallet")
+        min_required_sigs = wallet.get("min_required_sigs")
+        self.safe_to_sign = False if not min_required_sigs else self.num_of_sigs >= min_required_sigs
+
+        if not self.safe_to_sign:
+            raise UnsafePSBTError
+            
         # TODO: check that psbt contain enough signatures, such that we can finalise the psbt with our signature
         # check that the witness script passes with the available signatures
         # we preferably would not return a psbt with the signing service's signature,
         # if the serialised transaction cannot be validated there after.
-
-
-def psbt_analysis(psbt: str, config: Configuration) -> None:
-    """
-    :param psbt: base64 encoded string.
-    """
-    psbt_obj = Psbt(psbt, config)
-
-    # Todo: Add checks to ensure transaction encoded PSBT meets our specification
-    # before signing 
