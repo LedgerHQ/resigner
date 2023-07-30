@@ -4,21 +4,21 @@ from typing import Any, List, Dict, Optional
 from db import Session
 
 # Our coins
-UTXOS_SCHEMA = """CREATE TABLE UTXOS
-id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
+UTXOS_SCHEMA = """CREATE TABLE utxos
+(id INTEGER PRIMARY KEY,
 blockheight INT NOT NULL,
 blocktime INT NOT NULL,
 txid VARCHAR NOT NULL,
 vout INT NOT NULL,
 amount_sats INT NOT NULL,
-UNIQUE (txid, vout)
+UNIQUE (txid, vout))
 """
 
 # Table containing utxos that have been have been signed but has not yet been committed
 # to the blockchain or has been commited to the blockchain but does not have enough
 #confirmations to survive a blockchain reorganisation
 SPENT_UTXOS_SCHEMA = """CREATE TABLE SPENT_UTXOS
-(id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
+(id INT PRIMARY KEY NOT NULL,
 txid VARCHAR NOT NULL,
 vout VARCHAR NOT NULL,
 tx_spending_utxo INT NOT NULL,
@@ -36,7 +36,7 @@ monthly_spends INT
 
 # Spend transaction, since we are not responsible for finalizing the transactions
 SIGNED_SPENDS_SCHEMA = """CREATE TABLE SIGNED_SPENDS
-(id INT PRIMARY KEY NOT NULL AUTO_INCREMENT,
+(id INT PRIMARY KEY NOT NULL,
 processed_at INT NOT NULL,
 unsigned_psbt VARCHAR NOT NULL,
 signed_psbt VARCHAR NOT NULL,
