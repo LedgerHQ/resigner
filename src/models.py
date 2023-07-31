@@ -1,7 +1,7 @@
 import time
 from typing import Any, List, Dict, Optional
 
-from db import Session
+from .db import Session
 
 # Our coins
 UTXOS_SCHEMA = """CREATE TABLE utxos

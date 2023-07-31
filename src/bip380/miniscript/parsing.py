@@ -2,11 +2,11 @@
 Utilities to parse Miniscript from string and Script representations.
 """
 
-import bip380.miniscript.fragments as fragments
+from ..miniscript import fragments
 
-from bip380.key import DescriptorKey
-from bip380.miniscript.errors import MiniscriptMalformed
-from bip380.utils.script import (
+from ..key import DescriptorKey
+from ..miniscript.errors import MiniscriptMalformed
+from ..utils.script import (
     CScriptOp,
     OP_ADD,
     OP_BOOLAND,
