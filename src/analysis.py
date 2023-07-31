@@ -98,6 +98,18 @@ def descriptor_analysis(desc: str, config: Configuration) -> None:
     # All second-level nodes? having sats not requiring a signature should be timelocks.
     # We ignore preimages. Those shouldn't be in the second level anyway? 
 
+    # Lookup first-level node to find time_lock or height_lock node
+    for sub in wsh_desc.subs:
+        if sub.rel_heightlocks or sub.rel_timelocks:
+            config.set(
+                {
+                    "lock_type": 1 if sub.rel_heightlocks else 2,
+                    "lock_value": sub.value
+                },
+
+                "wallet"
+            )
+
     key = None
     min_required_sigs = 0
     for sub in wsh_desc.subs:
@@ -144,7 +156,7 @@ class Utxos(TypedDict):
     partial_signatures: List
     hex: str
     # Extra information for signer?
-    can_spend: bool
+    can_be_spent_without_resigner: bool
     safe_to_spend: bool
 
 
@@ -153,79 +165,97 @@ class Recipient(TypedDict):
     value: int
 
 
-class Psbt:
+class ResignerPsbt:
     psbt_str: str
-    # psbt: PSBT
-    _config: Configuration
     utxos: List[Utxos] = []  # Utxos we control
     third_party_utxos: List[Utxos] = []
     recipient: List[Recipient] = []
     fee: int
     can_spend_all_utxo: bool  # if we control a part of the signatures required to spend the utxo 
-    contains_partial_signature: bool  # Whether there are existing signatures in the psbt
-    can_finalise_transaction: bool  # If Psbt contains enough signatures to be spent after we sign
-    safe_to_sign: bool  
+    can_finalise_transaction: bool  # If Psbt contains enough signatures to be spent after we sign 
 
-    def __init__(self, psbt: str, config: Configuration):
+    def __init__(
+        self,
+        psbt: str,
+        utxos: Utxos,
+        third_party_utxos: Utxos,
+        recipient: Recipient,
+        fee: int
+    ):
         self.psbt_str = psbt
-        self._config = config
-        # self.psbt = PSBT()
-        bitcoin_conf = config.get("bitcoind")
-        self._btdc = BitcoindRPC(
-            bitcoin_conf["rpc_url"],
-            bitcoin_conf["bitcoind_rpc_user"],
-            bitcoin_conf["bitcoind_rpc_password"]
-        )
+        self.utxos = utxos
+        self.third_party_utxos = third_party_utxos
+        self.recipient = recipient
+        self.fee = fee
 
-        self.__analyse()
 
-    def __analyse(self):
-        self.psbt.deserialize(self.psbt_str)
-        decoded_psbt = self._btdc.decodepsbt(self._psbt)
-        decoded_psbt = self._btdc.analysepsbt(self._psbt)
-        psbt_vin = decoded_psbt["tx"]["vin"]
-        psbt_inputs = decoded_psbt["input"]
+async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPsbt:
+    bitcoind = config.get("bitcoind")
+    btdc = BitcoindRPC(
+        bitcoind["rpc_url"],
+        bitcoind["bitcoind_rpc_user"],
+        bitcoind["bitcoind_rpc_password"]
+    )
 
-        # build utxo list
-        for utxo, input in psbt_vin, psbt_inputs:
-            txout = self._btdc.gettxout(utxo.txid, utxo.vout)
-            #safe_to_spend = 
-            tx_utxo = {
-                        "txid": utxo.txid,
-                        "vout": utxo.vout,
-                        "value": txout["value"],
-                        "safe_to_spend": (txout["confirmations"] >= 6) if not txout["coinbase"] else (txout["confirmations"] >= 100)
-                    }
+    decoded_psbt = btdc.decodepsbt(psbt)
+    analysed_psbt = btdc.analysepsbt(psbt)
+    psbt_vin = decoded_psbt["tx"]["vin"]
+    psbt_inputs = decoded_psbt["input"]
 
-            if txout["scriptPubKey"]["address"] == self._config.get("wallet")["address"]:
-                self.utxos.append(tx_utxo)
-            else:
-                self.third_party_utxos.append(tx_utxo)
+    utxos: List[Utxos] = []  # Utxos we control
+    third_party_utxos: List[Utxos] = []
+    recipient: List[Recipient] = []
 
-        # Get receipients
+    wallet = config.get("wallet")
+    
+    # build utxo list
+    for utxo, tx_input in psbt_vin, psbt_inputs:
+        txout = btdc.gettxout(utxo.txid, utxo.vout)
+        
+        # Ensure lock value is in blocks
+        lock_value = wallet["lock_value"] if wallet["lock_type"] == 1 else (wallet["lock_value"]/(60*10))
+        
+        tx_utxo = {
+                    "txid": utxo.txid,
+                    "vout": utxo.vout,
+                    "value": txout["value"],
+                    "safe_to_spend": (txout["confirmations"] >= 6) if not txout["coinbase"] else (txout["confirmations"] >= 100),
+                    "can_be_spent_without_resigner": (lock_value >= txout["confirmations"])
+        }
 
-        psbt_vout = decoded_psbt["tx"]["vout"]
-        for vout in psbt_vout:
-            recipient = {
-                "address": vout["scriptPubKey"]["addresses"][0],  # Some vout contain multiple addresses; we expect only one.
-                "value": vout["value"]
-            }
-            self.recipient.append(recipient)
+        # Todo: make this work with deterministic addresses
+        if txout["scriptPubKey"]["address"] == config.get("wallet")["address"]:
+                utxos.append(tx_utxo)
+        else:
+                third_party_utxos.append(tx_utxo)
+
+    # Get receipients
+    psbt_vout = decoded_psbt["tx"]["vout"]
+    for vout in psbt_vout:
+        recipient = {
+            "address": vout["scriptPubKey"]["addresses"][0],  # Some vout contain multiple addresses; we expect only one.
+            "value": vout["value"]
+        }
+        recipient.append(recipient)
 
         
-        #self.can_spend_all_utxo
+    #self.can_spend_all_utxo
 
-        self.num_of_sigs = len(decoded_psbt["partial_signatures"])
-        self.contains_partial_signature = self.num_of_sigs > 0
+    num_of_sigs = len(decoded_psbt["partial_signatures"])
+    min_required_sigs = wallet["min_required_sigs"]
 
-        wallet = config.get("wallet")
-        min_required_sigs = wallet.get("min_required_sigs")
-        self.safe_to_sign = False if not min_required_sigs else self.num_of_sigs >= min_required_sigs
+    safe_to_sign = False if not min_required_sigs else num_of_sigs >= min_required_sigs
+    if not safe_to_sign:
+        raise UnsafePSBTError
 
-        if not self.safe_to_sign:
-            raise UnsafePSBTError
+    # TODO: check that psbt contain enough signatures, such that we can finalise the psbt with our signature
+    # check that the witness script passes with the available signatures
+    # we preferably would not return a psbt with the signing service's signature,
+    # if the serialised transaction cannot be validated there after.
 
-        # TODO: check that psbt contain enough signatures, such that we can finalise the psbt with our signature
-        # check that the witness script passes with the available signatures
-        # we preferably would not return a psbt with the signing service's signature,
-        # if the serialised transaction cannot be validated there after.
+    # Resigner miniscript has a condition allowing coins to be spent after a certain period of time
+    # We shouldn't sign the psbt if the coins can already be spent with resigner and if it contains enough
+    # partial signatures to facilitate spends. This would require signing inputs independently which might not
+    # be possible with bitcoind 
+
+    return ResignerPsbt(psbt, utxos, third_party_utxos, recipient, decoded_psbt["fee"])

@@ -25,7 +25,7 @@ from .models import (
     SIGNED_SPENDS_SCHEMA
 )
 
-from .analysis import Psbt
+from .analysis import ResignerPsbt, analyse_psbt_from_base64_str
 
 parser = reqparse.RequestParser()
 parser.add_argument('psbt', required=True, type=str, location=['json', 'form'], help='valid psbt to sign')
