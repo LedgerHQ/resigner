@@ -180,13 +180,16 @@ class ResignerPsbt:
         utxos: Utxos,
         third_party_utxos: Utxos,
         recipient: Recipient,
+        amount_sats: int,
         fee: int
     ):
         self.psbt_str = psbt
         self.utxos = utxos
         self.third_party_utxos = third_party_utxos
         self.recipient = recipient
+        self.amount_sats = amount_sats
         self.fee = fee
+
 
 
 async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPsbt:
@@ -207,7 +210,7 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
     recipient: List[Recipient] = []
 
     wallet = config.get("wallet")
-    
+
     # build utxo list
     for utxo, tx_input in psbt_vin, psbt_inputs:
         txout = btdc.gettxout(utxo.txid, utxo.vout)
@@ -230,8 +233,10 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
                 third_party_utxos.append(tx_utxo)
 
     # Get receipients
+    spend_amount = 0
     psbt_vout = decoded_psbt["tx"]["vout"]
     for vout in psbt_vout:
+        spend_amount += vout["value"]
         recipient = {
             "address": vout["scriptPubKey"]["addresses"][0],  # Some vout contain multiple addresses; we expect only one.
             "value": vout["value"]
@@ -258,4 +263,4 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
     # partial signatures to facilitate spends. This would require signing inputs independently which might not
     # be possible with bitcoind 
 
-    return ResignerPsbt(psbt, utxos, third_party_utxos, recipient, decoded_psbt["fee"])
+    return ResignerPsbt(psbt, utxos, third_party_utxos, recipient,spend_amount*100000000, decoded_psbt["fee"])
