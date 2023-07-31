@@ -1,12 +1,12 @@
 #This file was modified from the buidl-python project https://github.com/buidl-bitcoin/buidl-python/blob/main/buidl/op.py
 import hashlib
 
-from crypto.ecc import (
+from ..crypto.ecc import (
     S256Point,
     SchnorrSignature,
     Signature,
 )
-from helper import (
+from ..helper import (
     hash160,
     hash256,
 )

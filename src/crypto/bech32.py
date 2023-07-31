@@ -3,7 +3,7 @@ import re
 
 from io import BytesIO
 
-from helper import int_to_big_endian
+from ..helper import int_to_big_endian
 
 BECH32_ALPHABET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 GEN = [0x3B6A57B2, 0x26508E6D, 0x1EA119FA, 0x3D4233DD, 0x2A1462B3]

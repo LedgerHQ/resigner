@@ -1,6 +1,6 @@
 from typing import Any, List, TypedDict, Optional
 
-from errors import (
+from .errors import (
     PSBTPartialSignatureCountError,
     UnsafePSBTError,
     InsaneTimelock,
@@ -9,16 +9,15 @@ from errors import (
     InvalidDescriptor
 )
 
-from bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
-from bip380.descriptors import (
+from .bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
+from .bip380.descriptors import (
     Descriptor,
     WshDescriptor,
-    SatisfactionMaterial,
     DescriptorParsingError
 )
 
-from crypto.hd import HDPrivateKey, HDPublicKey
-from config import Configuration
+from .crypto.hd import HDPrivateKey, HDPublicKey
+from .config import Configuration
 # from psbt import PSBT
 
 
@@ -108,8 +107,8 @@ def descriptor_analysis(desc: str, config: Configuration) -> None:
                 or not sub.abs_timelocks
                 or not sub.abs_heightlocks
             ):
-            raise IncompatibleDescriptor("All second level miniscript node sats should include\
-                signatures or be timelocks.")
+                raise IncompatibleDescriptor("All second level miniscript node sats should include\
+                    signatures or be timelocks.")
 
         if sub.rel_heightlocks or sub.rel_timelocks:
             if len(sub.keys) == 1:
@@ -190,12 +189,12 @@ class Psbt:
         # build utxo list
         for utxo, input in psbt_vin, psbt_inputs:
             txout = self._btdc.gettxout(utxo.txid, utxo.vout)
-
+            #safe_to_spend = 
             tx_utxo = {
                         "txid": utxo.txid,
                         "vout": utxo.vout,
-                        "value": txout["value"]
-                        "safe_to_spend": txout["confirmations"] >= 6 if not txout["coinbase"] else txout["confirmations"] >= 100
+                        "value": txout["value"],
+                        "safe_to_spend": (txout["confirmations"] >= 6) if not txout["coinbase"] else (txout["confirmations"] >= 100)
                     }
 
             if txout["scriptPubKey"]["address"] == self._config.get("wallet")["address"]:

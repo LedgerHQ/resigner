@@ -2,9 +2,9 @@ import time
 
 from typing import List, Dict
 
-from config import Configuration
-from bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
-from models import AggregateSpends
+from .config import Configuration
+from .bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
+from .models import AggregateSpends
 
 
 class PolicyException(Exception):

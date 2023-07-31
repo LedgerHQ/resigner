@@ -19,8 +19,8 @@ Base 58 conversion utilities
 from binascii import hexlify, unhexlify
 from typing import List
 
-from helper import hash256
-from errors import BadArgumentError
+from ..helper import hash256
+from ..errors import BadArgumentError
 
 
 b58_digits: str = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'

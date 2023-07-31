@@ -13,13 +13,13 @@ Classes and utilities for working with extended public keys, key origins, and ot
 """
 
 from . import _base58 as base58
-from helper import (
+from ..helper import (
     AddressType,
     Chain,
     hash256,
     hash160,
 )
-from errors import BadArgumentError
+from ..errors import BadArgumentError
 
 import binascii
 import hmac

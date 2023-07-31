@@ -1,7 +1,7 @@
 from io import BytesIO
 
 from .ecc import N, PrivateKey, S256Point
-from helper import (
+from ..helper import (
     big_endian_to_int,
     byte_to_int,
     encode_base58_checksum,

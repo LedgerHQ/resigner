@@ -9,7 +9,7 @@ from .hash import (
     hash_challenge,
     hash_nonce,
 )
-from helper import (
+from ..helper import (
     big_endian_to_int,
     encode_base58_checksum,
     hash160,

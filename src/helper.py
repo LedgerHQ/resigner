@@ -8,25 +8,16 @@ import hmac
 import re
 
 from base64 import b64decode, b64encode
-from buidl.pbkdf2 import PBKDF2
+from pbkdf2 import PBKDF2
 
-try:
-    from csiphash import siphash24
+from .crypto.siphash import SipHash_2_4
 
-    def _siphash(key, value):
-        if len(key) != 16:
-            raise ValueError("Key should be 16 bytes")
-        return little_endian_to_int(siphash24(key, value))
-
-except ModuleNotFoundError:
-    from buidl.siphash import SipHash_2_4
-
-    def _siphash(key, value):
-        if len(key) != 16:
-            raise ValueError("Key should be 16 bytes")
-        sip = SipHash_2_4(key)
-        sip.update(value)
-        return sip.hash()
+def _siphash(key, value):
+    if len(key) != 16:
+        raise ValueError("Key should be 16 bytes")
+    sip = SipHash_2_4(key)
+    sip.update(value)
+    return sip.hash()
 
 
 SIGHASH_DEFAULT = 0
