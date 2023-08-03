@@ -18,39 +18,47 @@ UNIQUE (txid, vout))
 # to the blockchain or has been commited to the blockchain but does not have enough
 #confirmations to survive a blockchain reorganisation
 SPENT_UTXOS_SCHEMA = """CREATE TABLE SPENT_UTXOS
-(id INT PRIMARY KEY NOT NULL,
+(id INTEGER PRIMARY KEY NOT NULL,
 txid VARCHAR NOT NULL,
 vout VARCHAR NOT NULL,
-tx_spending_utxo INT NOT NULL,
-FOREIGN KEY (tx_spending_utxo) REFERENCES SIGNED_SPENDS(id),
 FOREIGN KEY (id) REFERENCES UTXOS(id)
 )
 """
 
 AGGREGATE_SPENDS_SCHEMA = """CREATE TABLE AGGREGATE_SPENDS
-(daily_spends INT,
-weekly_spends INT,
-monthly_spends INT
+(unconfirmed_daily_spends INT,
+confirmed_daily_spends INT,
+unconfirmed_weekly_spends INT,
+confirmed_weekly_spends INT,
+unconfirmed_monthly_spends INT,
+confirmed_monthly_spends INT
 );
 """
 
 # Spend transaction, since we are not responsible for finalizing the transactions
 SIGNED_SPENDS_SCHEMA = """CREATE TABLE SIGNED_SPENDS
-(id INT PRIMARY KEY NOT NULL,
+(id INTEGER PRIMARY KEY NOT NULL,
 processed_at INT NOT NULL,
 unsigned_psbt VARCHAR NOT NULL,
 signed_psbt VARCHAR NOT NULL,
-destination VARCHAR NOT NULL,
 amount_sats INT NOT NULL,
 utxo_id VARCHAR NOT NULL,
 request_timestamp INT,
+confirmed BOOL,
 FOREIGN KEY (utxo_id) REFERENCES SPENT_UTXOS (id)
 );
 """
 
+ADDRESS_SCHEMA = """CREATE TABLE addresses (
+    receive_address VARCHAR NOT NULL UNIQUE,
+    change_address VARCHAR NOT NULL UNIQUE,
+    derivation_index INTEGER NOT NULL UNIQUE
+);
+"""
 
 class BaseModel:
     _cursor: Any = None
+    _columns: List
 
     def __create(self, shema):
         raise NotImplementedError
@@ -59,7 +67,7 @@ class BaseModel:
         raise NotImplementedError
 
     @classmethod
-    def get(self, *args, condition: Optional[Dict] = {}):
+    def get(self, args: List, condition: Optional[Dict] = {}):
         query_condition = []
         query = ""
 
@@ -69,12 +77,18 @@ class BaseModel:
 
             query = f"Where {query_condition}"
 
-        sql_query = f"""SELECT {",".join(args)}
-            From {self._table}
-            {query};
-        """
-        
+        if bool(args):
+            sql_query = f"""SELECT {",".join(args)}
+                From {self._table}
+                {query};
+            """
+        else:
+            sql_query = f"SELECT * From {self._table}"
+
         self._cursor = Session.execute(sql_query)
+
+        if not bool(args):
+            args = _columns
 
         result = []
         for row in self._cursor:
@@ -134,10 +148,13 @@ class BaseModel:
 class Utxos(BaseModel):
     _table: str = "UTXOS"
     _primary_key: bool = True
+    _columns: List = [
+        "id", "blockheight", "txid", "vout", "amount_sats"
+    ]
 
     @classmethod
-    def insert(self, blockheight: int, blocktime: int, txid: str, vout: int, amount_sats: int):
-        sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?);"""
+    def insert(self, blockheight: int, txid: str, vout: int, amount_sats: int):
+        sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,);"""
 
         Session.execute(
             sql,
@@ -148,28 +165,64 @@ class Utxos(BaseModel):
 class SpentUtxos(BaseModel):
     _table: str = "SPENT_UTXOS"
     _primary_key: bool = True
+    _columns: List = [
+        "id", "txid", "vout"
+    ]
 
     @classmethod
-    def insert(self, txid: str, vout: int, tx_spending_utxo: int):
+    def insert(self, _id: int, txid: str, vout: int):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?);"""
 
-        Session.execute(sql, [txid, vout, tx_spending_utxo]).commit()
+        Session.execute(sql, [_id, txid, vout]).commit()
 
 
 class AggregateSpends(BaseModel):
     _table: str = "AGGREGATE_SPENDS"
     _primary_key: bool = False
+    _columns: List = [
+        "confirmed_daily_spends",
+        "unconfirmed_daily_spends",
+        "confirmed_weekly_spends",
+        "unconfirmed_weekly_spends",
+        "confirmed_monthly_spends",
+        "unconfirmed_monthly_spends"
+    ]
 
     @classmethod
-    def insert(self, daily_spends: int = 0, weekly_spends: int = 0, monthly_spends: int = 0):
-        sql = f"""INSERT INTO {self._table} VALUES (?,?,?);"""
+    def insert(self,
+        confirmed_daily_spends: int = 0,
+        unconfirmed_daily_spends: int = 0,
+        confirmed_weekly_spends: int = 0,
+        unconfirmed_weekly_spends: int = 0,
+        confirmed_monthly_spends: int = 0,
+        unconfirmed_monthly_spends: int = 0
+    ):
+        sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?,?);"""
 
-        Session.execute(sql, [daily_spends, weekly_spends, monthly_spends]).commit()
+        Session.execute(sql, [
+            confirmed_daily_spends,
+            unconfirmed_daily_spends,
+            confirmed_weekly_spends,
+            unconfirmed_weekly_spends,
+            confirmed_monthly_spends,
+            unconfirmed_monthly_spends
+            ]
+        ).commit()
 
 
 class SignedSpends(BaseModel):
     _table: str = "SIGNED_SPENDS"
     _primary_key = True
+    _columns: List = [
+        "id",
+        "processed_at",
+        "unsigned_psbt",
+        "signed_psbt",
+        "amount_sats",
+        "utxo_id",
+        "request_timestamp",
+        "confirmed"
+    ]
 
     @classmethod
     def insert(
@@ -179,7 +232,8 @@ class SignedSpends(BaseModel):
         destination: str,
         amount_sats: int,
         utxo_id: str,
-        request_timestamp: Optional[int] = 0
+        request_timestamp: Optional[int] = 0,
+        confirmed: Optional[bool] = False
     ):
         sql = f"""INSERT INTO {self._tables} VALUES (?,?,?,?,?,?,?);"""
 
@@ -189,9 +243,9 @@ class SignedSpends(BaseModel):
                 time.time(),
                 unsigned_psbt,
                 signed_psbt,
-                destination,
                 amount_sats,
                 utxo_id,
-                request_timestamp
+                request_timestamp,
+                confirmed
             ]
         ).commit()

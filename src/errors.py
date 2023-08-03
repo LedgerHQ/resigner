@@ -54,6 +54,10 @@ class PSBTPartialSignatureCountError(PSBTError):
     def __init__(self, message = "PSBT contains fewer partial signatures than required"):
         self.message = message
 
+class UtxoError(PSBTError):
+    def __init__(self, message = "UTXO not found in mempool"):
+        self.message = message
+
 class ServerError(Exception):
     def __init__(self, message):
         self.message = message
