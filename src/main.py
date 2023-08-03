@@ -1,41 +1,46 @@
 import argparse
+import threading
+
 from typing import Optional
 from sqlite3 import OperationalError
 
-from flask import Flask, jsonify
-from flask_restful import Api, Resource, reqparse
+from flask import Flask, jsonify, request
+
 
 from .errors import ServerError
+from .daemon import daemon
 from .bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
 from .config import Configuration
 from .policy import (
     Policy,
+    PolicyHandler,
+    PolicyException,
     SpendLimit
 )
 
 from .db import Session
 from .models import (
-    Utxos,
-    SpentUtxos,
-    AggregateSpends,
-    SignedSpends,
     UTXOS_SCHEMA,
     SPENT_UTXOS_SCHEMA,
     AGGREGATE_SPENDS_SCHEMA,
-    SIGNED_SPENDS_SCHEMA
+    SIGNED_SPENDS_SCHEMA,
+    SpentUtxos,
+    SignedSpends,
+    AggregateSpends
 )
 
-from .analysis import ResignerPsbt, analyse_psbt_from_base64_str
+from .analysis import descriptor_analysis, ResignerPsbt, analyse_psbt_from_base64_str
 
-parser = reqparse.RequestParser()
-parser.add_argument('psbt', required=True, type=str, location=['json', 'form'], help='valid psbt to sign')
+
+def db_handler():
+    pass
 
 def setup_error_handlers(app):
-    @app.errorhandler(Exception)
+    @app.errorhandler(ServerError)
     def error_handler(e):
         # Todo: log
         print(e)
-        return jsonify(error_code=500, message="Internal Server Error"), 500
+        return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
     @app.errorhandler(400)
     def bad_request(e):
@@ -53,34 +58,61 @@ def setup_error_handlers(app):
     def wrong_method(e):
         return jsonify(error_code=405, message="Only the POST Method is allowed"), 405
 
-class ResignerResource(Resource):
-    def __init__(self, *args, config: Optional[Configuration] = None, **kwargs):
-        if config is None:
-            raise RuntimeError("Argument 'config' must not be None")
-        super().__init__(*args, **kwargs)
-        self._config = config
+async def sign_transaction(psbt: str, config: Configuration):
+    btcd = config.get("bitcoind")["client"]
+    signed_psbt = ""
+    try:
+        signed_psbt = await btcd.walletprocesspsbt(psbt)
+    except BitcoindRPCError as e:
+        raise ServerError(e)
 
-    @property
-    def config(self):
-        return self._config
+    return signed_psbt
 
+def create_route(app):
+    @app.route('/process-psbt', methods=['POST'])
+    async def ProcessPsbt():
+        policy_handler = app.config["route_args"]["policy_handler"]
+        config = app.config["route_args"]["config"] 
+        args = request.get_json()
+        psbt_obj = await analyse_psbt_from_base64_str(args["psbt"], config)
 
-class SignPsbt(ResignerResource):
-    def post(self):
-        args = parser.parse_args()
-        psbt_obj = Psbt(args["psbt"], self.config)
-        
-        return args
+        try:
+            policy_handler.run({"psbt": psbt_obj})
+        except PolicyException as e:
+            raise ServerError(e)
 
-def create_app(config: Configuration, debug=False)-> Flask:
+        signed_psbt = await sign_transaction(args["psbt"], config)
+        for utxo in psbt_obj.utxos:
+            coin = Utxos.get([], {"txid": utxo["txid"], "vout": utxo["vout"]})
+            SpentUtxos.insert(coin["id"], utxo["txid"], utxo["vout"])
+
+        SignedSpends.insert(
+            args["psbt"],
+            signed_psbt,
+            psbt_obj.amount_sats,
+            SpentUtxos.get(["id"], {"txid": utxo["txid"], "vout": utxo["vout"]})["id"],
+            time.time(),
+            False
+        )
+        agg_spends = AggregateSpends.get()
+        AggregateSpends.update(
+            {
+                "unconfirmed_daily_spends": agg_spends["unconfirmed_daily_spends"] + psbt_obj.amount_sats,
+                "unconfirmed_weekly_spends": agg_spends["unconfirmed_weekly_spends"] + psbt_obj.amount_sats,
+                "unconfirmed_monthly_spends": agg_spends["unconfirmed_monthly_spends"] + psbt_obj.amount_sats
+            }
+        )
+
+        return jsonify(psbt=signed_psbt, signed=True)
+
+def create_app(config: Configuration, policy_handler: PolicyHandler, debug=False)-> Flask:
     app = Flask(__name__)
     if debug:
         app.app_env = 'development'
     else:
         app.app_env = 'production'
 
-    api = Api(app)
-    api.add_resource(SignPsbt, '/process-psbt', resource_class_kwargs={"config": config})
+    app.config["route_args"] = {"config": config, "policy_handler": policy_handler}
 
     setup_error_handlers(app)
     return app
@@ -105,6 +137,10 @@ def local_main():
         bitcoind["bitcoind_rpc_password"]
     )
 
+    config.set({"client": btcd}, "bitcoind")
+
+    descriptor_analysis(config)
+
     # Create tables
     try:    
         Session.execute(UTXOS_SCHEMA)
@@ -115,7 +151,23 @@ def local_main():
         if not e.__repr__() == "OperationalError('table utxos already exists')":
             raise ServerError(e)
  
-    app = create_app(config)
+    # Insert the only row in AggregateSpends Table
+    AggregateSpends.insert()
+
+    # Setup daemon
+    threading.Thread(target=daemon, args(config), daemon=True).start()
+
+
+    # Setup PolicyHandler
+    policy_handler = PolicyHandler()
+    policy_handler.register_policy(
+        [
+            SpendLimit,
+        ]
+    )
+
+    app = create_app(config, policy_handler)
+    create_route(app)
 
     app.run(debug=True, port=7767)    
 
