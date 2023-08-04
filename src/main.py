@@ -1,3 +1,4 @@
+import os
 import argparse
 import threading
 
@@ -123,11 +124,14 @@ def local_main():
     parser.add_argument('--config_path', type=str, help='configuration path')
    
     args = parser.parse_args()
+
+    # Get configuration path from environment if not an argument
+    config_path = os.getenv("RESIGNER_CONFIG_PATH") if not args.config_path else args.config_path
     if not args.config_path:
         raise ServerError("Resigner started without configuration path")
 
     # Intialise Configuration
-    config = Configuration(args.config_path)
+    config = Configuration(config_path)
 
     # Initialise bitcoind rpc client
     bitcoind = config.get("bitcoind")
@@ -139,6 +143,7 @@ def local_main():
 
     config.set({"client": btcd}, "bitcoind")
 
+    # Analyse Descriptor
     descriptor_analysis(config)
 
     # Create tables
