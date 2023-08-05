@@ -163,6 +163,12 @@ class BitcoindRPC:
             [txid, verbose, block_hash]
         )
 
+    async def generatetoaddress(self, nblocks: int, address: str, matrixes: Optional[int]=1000000):
+        return await self.async_call(
+            "generatetoaddress",
+            [nblocks, address, matrixes]
+        )
+
     async def createpsbt(
         self,
         inputs: List,
