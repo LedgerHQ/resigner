@@ -25,14 +25,13 @@ from .models import Utxos
 
 
 def descriptor_analysis(config: Configuration) -> None:
+    MIN_LOCKTIME_SECS: int = 7776000  # Minimum time that should elapse before a user can spend without Resigner
+    MIN_LOCKTIME_HEIGHT: int = 12960  # Minimum amount of blocks to be created before a user can spend without Resigner
+    MAX_LOCKTIME_SECS: int  # Maximum time that should elapse in unixtime(seconds) before a user can spend without Resigner
+    MAX_LOCKTIME_HEIGHT:int  # Maximum amount of blocks created before a user can spend without Resigner
+
     desc = config.get("wallet")["desc"]
     wsh_desc: WshDescriptor = None
-    min_secs: int = 7776000  # Minimum time that should elapse before a user can spend without Resigner
-    min_blocks: int = 12960  # Minimum amount of blocks to be created before a user can spend without Resigner
-
-    max_secs: int  # Maximum time that should elapse in unixtime(seconds) before a user can spend without Resigner
-    max_blocks:int  # Maximum amount of blocks created before a user can spend without Resigner
-
 
     # Example of miniscript policy patterns for use with Resigner
     # and_v(or_c(pk(resigner),v:older(1004)),multi(1,participant_1,participant_2))
@@ -44,10 +43,10 @@ def descriptor_analysis(config: Configuration) -> None:
             wsh_desc = Descriptor.from_str(desc)
         except DescriptorParsingError as e:
             raise InvalidDescriptor(e)
-    elif desc.startswith("tr(") and desc.endswith(")"):
+    elif desc.startswith("tr("):
         #TODO: add taproot support
         raise NotImplementedError("taproot support not implemented")
-    elif desc.startswith("wpkh(") and desc_str.endswith(")"):
+    elif desc.startswith("wpkh("):
         raise IncompatibleDescriptor("Support for wpkh descriptors does not make sense for Resigner")
     else:
         raise InvalidDescriptor(f"Unsupported descriptors format: {desc}")
@@ -155,14 +154,12 @@ def descriptor_analysis(config: Configuration) -> None:
         elif node.__repr__().startswith("andor"):
             return get_relative_lock_node_andor(node)
         elif node.__repr__().startswith("or_"):
-
             # We should avoid such circuitous miniscript
             sub1 = parse_node(node.subs[0])
             sub2 = parse_node(node.subs[1])
 
             return sub1 if sub1 else sub2
         else:
-            
             if node.__repr__().startswith("older"):
                 return node
             elif node.rel_heightlocks or node.rel_timelocks:
@@ -173,6 +170,14 @@ def descriptor_analysis(config: Configuration) -> None:
         raise IncompatibleDescriptor(f"Could not find the node containing time lock")
 
     if rel_lock_sub.rel_heightlocks or rel_lock_sub.rel_timelocks:
+        if rel_lock_sub.rel_heightlocks:
+            if rel_lock_sub.value < MIN_LOCKTIME_HEIGHT:
+                raise IncompatibleDescriptor(f"minimum locktime in blocks: {MIN_LOCKTIME_HEIGHT}. "\
+                        f"But was set to {rel_lock_sub.value}")
+        if rel_lock_sub.rel_timelocks:
+            if rel_lock_sub.value < MIN_LOCKTIME_SECS:
+                raise IncompatibleDescriptor(f"minimum locktime in seconds: {MIN_LOCKTIME_SECS}. "\
+                        "But was set to {rel_lock_sub.value}")
         # Cannot fail now
         if rel_lock_sub.__repr__().startswith("older("):
             config.set(
@@ -200,15 +205,6 @@ def descriptor_analysis(config: Configuration) -> None:
                         raise IncompatibleDescriptor("There are multiple xprivs in descriptor.")
                     if len(sub.subs) == 2:  # Cannot fail now
                         for sub in sub.subs:
-                            if sub.rel_heightlocks or sub.rel_timelocks:
-                                if sub.rel_heightlocks:
-                                    if sub.value < min_blocks:
-                                        raise IncompatibleDescriptor("minimum nsequence in seconds: {min_secs}.\
-                                            But was set to {sub}")
-                                if sub.rel_timelocks:
-                                    if sub.value < min_secs:
-                                        raise IncompatibleDescriptor("minimum nsequence in seconds: {min_blocks}.\
-                                            But was set to {sub}")
                             if sub.needs_sig:
                                 # Minimum no of signature required to satisfy miniscript
                                 min_required_sigs += 1
@@ -247,9 +243,9 @@ class ResignerPsbt:
     def __init__(
         self,
         psbt: str,
-        utxos: Utxos,
-        third_party_utxos: Utxos,
-        recipient: Recipient,
+        utxos: UtxosType,
+        third_party_utxos: UtxosType,
+        recipient: RecipientType,
         amount_sats: int,
         fee: int,
         safe_to_sign: Optional[bool] = False
@@ -260,7 +256,7 @@ class ResignerPsbt:
         self.recipient = recipient
         self.amount_sats = amount_sats
         self.fee = fee
-        self.safe_to_sign = safe_to_signs
+        self.safe_to_sign = safe_to_sign
 
 
 
@@ -270,7 +266,8 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
     decoded_psbt = await btcd.decodepsbt(psbt)
     psbt_vin = decoded_psbt["tx"]["vin"]
 
-    for key, value in decoded_psbt["tx"].items():
+    # for key, value in decoded_psbt["tx"].items():
+    
     utxos: List[Utxos] = []  # Utxos we control
     third_party_utxos: List[Utxos] = []
     recipient: List[Recipient] = []
@@ -302,23 +299,25 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
     psbt_vout = decoded_psbt["tx"]["vout"]
     for vout in psbt_vout:
         spend_amount += vout["value"]
-        recipient = {
-            "address": vout["scriptPubKey"]["addresses"][0],  # Some vout contain multiple addresses; we expect only one.
+        recpt = {
+            "address": vout["scriptPubKey"]["address"],  # Some vout contain multiple addresses; we expect only one.
             "value": vout["value"]
         }
-        recipient.append(recipient)
+        recipient.append(recpt)
 
         
     #self.can_spend_all_utxo
 
-    num_of_sigs = len(decoded_psbt["partial_signatures"])
-    min_required_sigs = wallet["min_required_sigs"]
+    #num_of_sigs = len(decoded_psbt["partial_signatures"])
+    #min_required_sigs = wallet["min_required_sigs"]
 
-    safe_to_sign = (False if not min_required_sigs else num_of_sigs >= min_required_sigs) and
-        all(utxo["safe_to_spend"] for utxo in utxos)
+    safe_to_sign = all(utxo["safe_to_spend"] for utxo in utxos)
     if not safe_to_sign:
         raise UnsafePSBTError
 
+    fee = None
+    if "fee" in decoded_psbt:
+        fee = decoded_psbt["fee"]
     # TODO: check that psbt contain enough signatures, such that we can finalise the psbt with our signature
     # check that the witness script passes with the available signatures
     # we preferably would not return a psbt with the signing service's signature,
@@ -333,7 +332,8 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
             psbt,
             utxos,
             third_party_utxos,
-            recipient,spend_amount*100000000,
-            decoded_psbt["fee"],
+            recipient,
+            spend_amount*100000000,
+            fee,
             safe_to_sign
         )

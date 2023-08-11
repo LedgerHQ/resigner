@@ -24,8 +24,10 @@ class BitcoindRPC:
         # Configure `httpx.AsyncClient`.
         auth = (rpc_user, rpc_password)
         headers = {"content-type": "application/json"}
+        timeout = httpx.Timeout(10.0, read=100)
+        limits = httpx.Limits(max_keepalive_connections=0, max_connections=None, keepalive_expiry=0)
+        self.client = httpx.AsyncClient(auth=auth, headers=headers, timeout=timeout, limits=limits)
 
-        self.client = httpx.AsyncClient(auth=auth, headers=headers)
 
     async def __async_exit__(self):
         await self.client.aclose()
@@ -34,6 +36,8 @@ class BitcoindRPC:
         """
         Initiate JSONRPC call.
         """
+        #print("rpc method:", method, " RPC url: ", self._url)
+        #print("rpc parameters:", params)
         req = self.client.post(
             url=self._url,
             content=orjson.dumps(
@@ -46,7 +50,9 @@ class BitcoindRPC:
             ),
             **kwargs,
         )
-        resp = orjson.loads((await req).content)
+        r = await req
+        #print("response: ", r._content)
+        resp = orjson.loads(r.content or r._content)
 
         if resp["error"] is not None:
             raise BitcoindRPCError(resp["error"]["code"], resp["error"]["message"])
@@ -196,7 +202,7 @@ class BitcoindRPC:
         # Todo: Test
         return await self.async_call(
             "walletcreatefundedpsbt",
-            [inputs, outputs, locktime, options, bip32derivs]
+            [inputs, outputs]
         )
 
     async def analysepsbt(self, psbt: str):
@@ -284,7 +290,10 @@ class BitcoindRPC:
     async def importdescriptors(self, request: List):
         return await self.async_call("importdescriptors", [request])
 
-    async def getnewaddress(self, label, address_type):
+    async def getnewaddress(self,
+        label: Optional[str] = None,
+        address_type: Optional[Literal["legacy, p2sh-segwit", "bech32"]] = None
+    ):
         return await self.async_call(
             "getnewaddress",
             [label, address_type]  # TODO: figure out some way to set -rpcwallet
@@ -313,3 +322,35 @@ class BitcoindRPC:
 
     async def walletlock(self):
         return await self.async_call("walletlock", [])
+
+    async def sendtoaddress(
+        self,
+        address: str,
+        amount: int,
+        comment: Optional[str] = "",
+        comment_to: Optional[str] = "",
+        subtractfeefromamount: Optional[bool] = False,  # default=False
+        replaceable: Optional[bool] = True,
+        conf_target: Optional[int] = None,
+        estimate_mode: Optional[Literal["unset", "economical", "conservative"]] = "unset",  # default="unset"
+        avoid_reuse: Optional[bool] = False,
+        fee_rate: Optional[int] = None
+    ):
+        return await self.async_call(
+            "sendtoaddress",
+            [
+                address,
+                amount,
+                comment,
+                comment_to,
+                subtractfeefromamount,
+                replaceable,
+                conf_target,
+                estimate_mode,
+                avoid_reuse,
+                fee_rate
+            ]
+        )
+
+    async def sendrawtransaction(self, hexstring: str, maxfeerate: Optional[Union[int, str]]=0.10):
+        return await self.async_call("sendrawtransaction", [hexstring, maxfeerate])

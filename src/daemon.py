@@ -7,7 +7,10 @@
 #
 
 import time
+import math
+import asyncio
 import threading
+from sqlite3 import OperationalError
 
 from .config import Configuration
 from .bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
@@ -24,10 +27,38 @@ from .policy import SpendLimit
 SATS=100000000
 BLOCK_TIME = 10*60  # Approx time to create a block
 
-def sync_utxos(btcd: BitcoindRPC):
-    tip = btcd.getblockcount()
-    unspent = btcd.listunspent()
-    receive = btcd.listreceivedbyaddress()
+def async_wrapper(func, params):
+    asyncio.run(func(*params))
+
+async def async_looper(btcd):
+    while True:
+        start_time = time.time()
+        await asyncio.gather(sync_utxos(btcd), sync_aggregate_spends(btcd))
+
+        end_time = time.time()
+        if (end_time - start_time) < BLOCK_TIME:
+            await asyncio.sleep(BLOCK_TIME - (end_time - start_time))
+
+
+def sync_looper(config, timer):
+    while True:
+        thread1 = threading.Thread(target=reset_aggregate_spends, args=([config, timer]))
+
+        start_time = math.floor(time.time())
+        
+        thread1.start()
+        thread1.join()
+
+        end_time = math.floor(time.time())
+
+        if (end_time - start_time) < BLOCK_TIME:
+            time.sleep(BLOCK_TIME - (end_time - start_time))
+
+
+async def sync_utxos(btcd: BitcoindRPC):
+    tip = await btcd.getblockcount()
+    unspent = await btcd.listunspent()
+    receive = await btcd.listreceivedbyaddress()
 
     coins = Utxos.get()
     utxo_is_in_db = False
@@ -55,12 +86,16 @@ def sync_utxos(btcd: BitcoindRPC):
                 utxo_has_been_spent = False
 
         if utxo_has_been_spent:
-            Utxos.delete(f"txid = {coin["txid"]}")
+            try:
+                Utxos.delete({"txid": coin["txid"]})
+            except OperationalError as e:
+                # Ignoring this for now
+                print("Database not fully synced. ", e)
 
         utxo_has_been_spent = True
 
 
-def sync_aggregate_spends(btcd: BitcoindRPC):
+async def sync_aggregate_spends(btcd: BitcoindRPC):
     signed_spends = SignedSpends.get()
     spent_utxos = SpentUtxos.get()
     if bool(signed_spends):
@@ -69,7 +104,7 @@ def sync_aggregate_spends(btcd: BitcoindRPC):
 
             txout = None
             if not row["confirmed"]:
-                txout = btcd.gettxout(spent_utxos["txid"], spent_utxos["vout"])
+                txout = await btcd.gettxout(spent_utxos["txid"], spent_utxos["vout"])
                 if not txout:
                     SignedSpends.update({"confirmed": True}, {"utxo_id": row["utxo_id"]})
                     agg_spends = AggregateSpends.get()
@@ -84,10 +119,9 @@ def sync_aggregate_spends(btcd: BitcoindRPC):
                         }
                     )
 
-def reset_aggregate_spends(config: Configuration):
+def reset_aggregate_spends(config: Configuration, timer: SpendLimit):
     """Reset the aggregate spends in the db after each day, week and month
     """
-    timer = SpendLimit(None, config)
     prvs_time = config.get("timer")
 
     if prvs_time["hrs_passed_since_last_day"] > timer._hrs_passed_since_last_day:
@@ -96,27 +130,30 @@ def reset_aggregate_spends(config: Configuration):
     if prvs_time["days_passed_since_last_week"] > timer._days_passed_since_last_week:
         AggregateSpends.update({"confirmed_weekly_spends": 0})
 
-    if prvs_time["days_passed_since_last_month"] >timer._days_passed_since_last_month:
+    if prvs_time["days_passed_since_last_month"] > timer._days_passed_since_last_month:
         AggregateSpends.update({"confirmed_monthly_spends": 0})
+
+    config.set({
+        "hrs_passed_since_last_day": timer._hrs_passed_since_last_day,
+        "days_passed_since_last_week": timer._days_passed_since_last_week,
+        "days_passed_since_last_month": timer._days_passed_since_last_month
+        }, "timer")
 
 def daemon(config: Configuration):
     btcd = config.get("bitcoind")["client"]
+    timer = SpendLimit(config)
 
-    while True:
-        thread1 = threading.Thread(target=sync_utxos, args=(btcd))
-        thread2 = threading.Thread(target=sync_aggregate_spends, args(btcd))
-        thread3 = threading.Thread(target=reset_aggregate_spends, args(config))
+    config.set({
+        "hrs_passed_since_last_day": timer._hrs_passed_since_last_day,
+        "days_passed_since_last_week": timer._days_passed_since_last_week,
+        "days_passed_since_last_month": timer._days_passed_since_last_month
+        }, "timer")
 
-        start_time = math.floor(time.time())
-        thread1.start()
-        thread2.start()
-        thread3.start()
+    thread1 = threading.Thread(target=async_wrapper, args=(async_looper, [btcd]))
+    thread2 = threading.Thread(target=sync_looper, args=([config, timer]))
 
-        thread1.join()
-        thread2.join()
-        thread3.join()
+    thread1.start()
+    thread2.start()
 
-        end_time = math.floor(time.time())
-
-        if (end_time - start_time) < BLOCK_TIME:
-            time.sleep(BLOCK_TIME - (end_time - start_time))
+    thread1.join()
+    thread2.join()

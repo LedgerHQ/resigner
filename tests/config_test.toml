@@ -1,13 +1,23 @@
 # Configuration for testing
 
-# use servertime: if not true use UTC+0. Default = True
-use_servertime = true
+[resigner_config]
+use_servertime = true # use servertime: if not true use UTC+0. Default: True
+node = "bitcoind" # we only support bitcoind
+fee_limit_max = 0
+fee_limit_min = 0
 
-[bitcoind_config]
-url = "http://127.0.0.1:18443"
+[wallet]
+wallet_name = "multisig_wallet_1"
+desc = "wsh(and_v(v:pk(tpubD6NzVbkrYhZ4WVLXUV8feb3wGeDj7ifwFCprLS5mMgod52gHEhdf5eRbHLfKpK7Quev91HYkP1TzooEM9jzY331ViXWzDbeWc4hFy9QdS3R/0/*),or_d(pk(tprv8ZgxMBicQKsPcu7atsTZmCB59KA6mhFr4TyKBghM7Tqu3cNHxVD2S2KFoth2b7c9tZsD3PetrANdQ8oc5KUw3KcZr273Vgxrd1dTzyGepSG/0/*),older(12960))))#uayvvntz"
+
+[bitcoind]
+network = "regtest" # ["regtest", "mainnet"]
+rpc_url = "http://127.0.0.1:18443"
+bitcoind_rpc_user = "lord-bryan"
+bitcoind_rpc_password = "shallipopi"
 
 [spending_conditions]
 # Spending limit in satoshis; The monthly_limit >= weekly_limit >= daily_limit.
-daily_limit = 12000000
+daily_limit = 10000000  # 0.1 btc
 weekly_limit = 96000000
 monthly_limit = 420000000

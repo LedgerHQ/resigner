@@ -1,9 +1,10 @@
 import os
+import re
 import argparse
 import threading
 
 from typing import Optional
-from sqlite3 import OperationalError
+from sqlite3 import OperationalError, IntegrityError, DatabaseError
 
 from flask import Flask, jsonify, request
 
@@ -25,6 +26,7 @@ from .models import (
     SPENT_UTXOS_SCHEMA,
     AGGREGATE_SPENDS_SCHEMA,
     SIGNED_SPENDS_SCHEMA,
+    Utxos,
     SpentUtxos,
     SignedSpends,
     AggregateSpends
@@ -32,9 +34,6 @@ from .models import (
 
 from .analysis import descriptor_analysis, ResignerPsbt, analyse_psbt_from_base64_str
 
-
-def db_handler():
-    pass
 
 def setup_error_handlers(app):
     @app.errorhandler(ServerError)
@@ -63,8 +62,10 @@ async def sign_transaction(psbt: str, config: Configuration):
     btcd = config.get("bitcoind")["client"]
     signed_psbt = ""
     try:
+        print("sign psbt: ", psbt)
         signed_psbt = await btcd.walletprocesspsbt(psbt)
     except BitcoindRPCError as e:
+        print("signing psbt failed psbt: ", psbt)
         raise ServerError(e)
 
     return signed_psbt
@@ -82,20 +83,44 @@ def create_route(app):
         except PolicyException as e:
             raise ServerError(e)
 
-        signed_psbt = await sign_transaction(args["psbt"], config)
-        for utxo in psbt_obj.utxos:
-            coin = Utxos.get([], {"txid": utxo["txid"], "vout": utxo["vout"]})
-            SpentUtxos.insert(coin["id"], utxo["txid"], utxo["vout"])
+        # Todo: check if the psbt was actually signed.
+        ret = await sign_transaction(args["psbt"], config)
+        if ret["complete"] is not True:
+            # Todo: should fail here
+            pass
 
-        SignedSpends.insert(
-            args["psbt"],
-            signed_psbt,
-            psbt_obj.amount_sats,
-            SpentUtxos.get(["id"], {"txid": utxo["txid"], "vout": utxo["vout"]})["id"],
-            time.time(),
-            False
-        )
-        agg_spends = AggregateSpends.get()
+        for utxo in psbt_obj.utxos:
+            try:
+                coin = Utxos.get([], {"txid": utxo["txid"], "vout": utxo["vout"]})[0]
+                SpentUtxos.insert(coin["id"], utxo["txid"], utxo["vout"])
+            except OperationalError as e:
+                if not app.debug:
+                    return jsonify(
+                        error_code=500,
+                        message="Cannot sign transactions until Utxo set is fully synced"
+                    ), 500
+            except IntegrityError as e:
+                # Todo: 
+                pass
+
+        try:
+            _id = SpentUtxos.get(["id"], {"txid": utxo["txid"], "vout": utxo["vout"]})["id"]
+            SignedSpends.insert(
+                args["psbt"],
+                ret["psbt"],
+                psbt_obj.amount_sats,
+                _id,
+                time.time(),
+                False
+            )
+        except OperationalError as e:
+            print("Database not fully synced.", e)
+        except DatabaseError as e:
+            print("Database not fully synced.", e)
+
+
+        agg_spends = AggregateSpends.get()[0]
+        print("agg_spends:", agg_spends)
         AggregateSpends.update(
             {
                 "unconfirmed_daily_spends": agg_spends["unconfirmed_daily_spends"] + psbt_obj.amount_sats,
@@ -104,7 +129,10 @@ def create_route(app):
             }
         )
 
-        return jsonify(psbt=signed_psbt, signed=True)
+        agg_spends = AggregateSpends.get()[0]
+        print("agg_spends:", agg_spends)
+
+        return jsonify(psbt=ret["psbt"], signed=True)
 
 def create_app(config: Configuration, policy_handler: PolicyHandler, debug=False)-> Flask:
     app = Flask(__name__)
@@ -118,16 +146,14 @@ def create_app(config: Configuration, policy_handler: PolicyHandler, debug=False
     setup_error_handlers(app)
     return app
 
-def local_main():
+def local_main(debug: Optional[bool] = False, port: Optional[int] = 7767):
     # Setup args
     parser = argparse.ArgumentParser(description='Signing Service for Miniscript Policies.')
     parser.add_argument('--config_path', type=str, help='configuration path')
    
-    args = parser.parse_args()
+    config_path =  os.getenv("RESIGNER_CONFIG_PATH") or parser.parse_args().config_path
 
-    # Get configuration path from environment if not an argument
-    config_path = os.getenv("RESIGNER_CONFIG_PATH") if not args.config_path else args.config_path
-    if not args.config_path:
+    if not config_path:
         raise ServerError("Resigner started without configuration path")
 
     # Intialise Configuration
@@ -135,8 +161,10 @@ def local_main():
 
     # Initialise bitcoind rpc client
     bitcoind = config.get("bitcoind")
+    rpc_url = bitcoind["rpc_url"] if re.search("/wallet" ,bitcoind["rpc_url"]) else\
+        f"{bitcoind['rpc_url']}/wallet/{config.get('wallet')['wallet_name']}"
     btcd = BitcoindRPC(
-        bitcoind["rpc_url"],
+        rpc_url,
         bitcoind["bitcoind_rpc_user"],
         bitcoind["bitcoind_rpc_password"]
     )
@@ -156,25 +184,26 @@ def local_main():
         if not e.__repr__() == "OperationalError('table utxos already exists')":
             raise ServerError(e)
  
-    # Insert the only row in AggregateSpends Table
-    AggregateSpends.insert()
+    # Insert the only record in AggregateSpends Table
+    if not AggregateSpends.get():
+        AggregateSpends.insert()
 
     # Setup daemon
-    threading.Thread(target=daemon, args(config), daemon=True).start()
+    threading.Thread(target=daemon, args=([config]), daemon=True).start()
 
 
     # Setup PolicyHandler
     policy_handler = PolicyHandler()
     policy_handler.register_policy(
         [
-            SpendLimit,
+            SpendLimit(config),
         ]
     )
 
     app = create_app(config, policy_handler)
     create_route(app)
 
-    app.run(debug=True, port=7767)    
+    app.run(debug=debug, port=port)    
 
 if __name__ == '__main__':
     local_main()

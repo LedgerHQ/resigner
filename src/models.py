@@ -7,7 +7,6 @@ from .db import Session
 UTXOS_SCHEMA = """CREATE TABLE utxos
 (id INTEGER PRIMARY KEY,
 blockheight INT NOT NULL,
-blocktime INT NOT NULL,
 txid VARCHAR NOT NULL,
 vout INT NOT NULL,
 amount_sats INT NOT NULL,
@@ -67,7 +66,7 @@ class BaseModel:
         raise NotImplementedError
 
     @classmethod
-    def get(self, args: List, condition: Optional[Dict] = {}):
+    def get(self, args: Optional[List] = [], condition: Optional[Dict] = {}):
         query_condition = []
         query = ""
 
@@ -84,12 +83,10 @@ class BaseModel:
             """
         else:
             sql_query = f"SELECT * From {self._table}"
+            args = self._columns
 
         self._cursor = Session.execute(sql_query)
-
-        if not bool(args):
-            args = _columns
-
+        
         result = []
         for row in self._cursor:
             row_dict = {}
@@ -98,6 +95,8 @@ class BaseModel:
 
             result.append(row_dict)
 
+        # Close cursor object
+        self._cursor.close()
         return result
 
 
@@ -121,28 +120,38 @@ class BaseModel:
         SET {", ".join(query)}
         {condition_query};
         """
-
-        Session.execute(sql).commit()
+        cursor = Session.cursor()
+        cursor.execute(sql)
+        cursor.close()
+        Session.commit()
 
     @classmethod
     def filter(self):
         raise NotImplementedError
 
     @classmethod
-    def delete(self, condition: str):
-        sql_query = f"""DELETE FROM {self._table} WHERE {condition};"""
+    def delete(self, condition: Dict):
+        query_condition = []
+        if bool(condition):
+            for key, value in condition.items():
+                query_condition.append(f"{key} = {value} ")
 
-        Session.execute(sql_query).commit()
+        sql_query = f"""DELETE FROM {self._table} WHERE {", ".join(query_condition)};"""
+
+        cursor = Session.cursor()
+        cursor.execute(sql_query)
+        cursor.close()
+        Session.commit()
 
     @classmethod
     def delete_table(self):
         """Drop table from DB"""
         sql_query = f"DROP TABLE {self._table};"
 
-        Session.execute(sql_query).commit()
-
-
-
+        cursor = Session.cursor()
+        cursor.execute(sql_query)
+        cursor.close()
+        Session.commit()
 
 
 class Utxos(BaseModel):
@@ -154,12 +163,15 @@ class Utxos(BaseModel):
 
     @classmethod
     def insert(self, blockheight: int, txid: str, vout: int, amount_sats: int):
-        sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,);"""
+        sql = f"""INSERT INTO {self._table} VALUES (NULL, ?,?,?,?);"""
 
-        Session.execute(
+        cursor = Session.cursor()
+        cursor.execute(
             sql,
-            [blockheight, blocktime, txid, vout, amount_sats]
-        ).commit()
+            [blockheight, txid, vout, amount_sats]
+        )
+        cursor.close()
+        Session.commit()
 
 
 class SpentUtxos(BaseModel):
@@ -173,7 +185,10 @@ class SpentUtxos(BaseModel):
     def insert(self, _id: int, txid: str, vout: int):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?);"""
 
-        Session.execute(sql, [_id, txid, vout]).commit()
+        cursor = Session.cursor()
+        cursor.execute(sql, [_id, txid, vout])
+        cursor.close()
+        Session.commit()
 
 
 class AggregateSpends(BaseModel):
@@ -199,7 +214,8 @@ class AggregateSpends(BaseModel):
     ):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?,?);"""
 
-        Session.execute(sql, [
+        cursor = Session.cursor()
+        cursor.execute(sql, [
             confirmed_daily_spends,
             unconfirmed_daily_spends,
             confirmed_weekly_spends,
@@ -207,7 +223,9 @@ class AggregateSpends(BaseModel):
             confirmed_monthly_spends,
             unconfirmed_monthly_spends
             ]
-        ).commit()
+        )
+        cursor.close()
+        Session.commit()
 
 
 class SignedSpends(BaseModel):
@@ -235,9 +253,10 @@ class SignedSpends(BaseModel):
         request_timestamp: Optional[int] = 0,
         confirmed: Optional[bool] = False
     ):
-        sql = f"""INSERT INTO {self._tables} VALUES (?,?,?,?,?,?,?);"""
+        sql = f"""INSERT INTO {self._tables} VALUES (NULL,?,?,?,?,?,?,?);"""
 
-        Session.execute(
+        cursor = Session.cursor()
+        cursor.execute(
             sql,
             [
                 time.time(),
@@ -248,4 +267,6 @@ class SignedSpends(BaseModel):
                 request_timestamp,
                 confirmed
             ]
-        ).commit()
+        )
+        cursor.close()
+        Session.commit()

@@ -45,6 +45,9 @@ class Configuration:
     def set(self, key: Dict, section: str = None) -> None:
         if isinstance(key, Dict):
             if section:
-                self.config[section].update(key)
+                if section in self.config:
+                    self.config[section].update(key)
+                else:
+                    self.config[section] = key
             else:
                 self.config.update(key)
