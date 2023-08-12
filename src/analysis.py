@@ -229,6 +229,8 @@ class UtxosType(TypedDict):
 class RecipientType(TypedDict):
     address: List
     value: int
+    is_changeaddress: bool
+    ismine: bool
 
 
 class ResignerPsbt:
@@ -261,9 +263,10 @@ class ResignerPsbt:
 
 
 async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPsbt:
-    btcd = config.get("bitcoind")["client"]
+    btd_client = config.get("bitcoind")["client"]
+    btd_change_client = config.get("bitcoind")["change_client"]
 
-    decoded_psbt = await btcd.decodepsbt(psbt)
+    decoded_psbt = await btd_client.decodepsbt(psbt)
     psbt_vin = decoded_psbt["tx"]["vin"]
 
     # for key, value in decoded_psbt["tx"].items():
@@ -276,7 +279,7 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
 
     # build utxo list
     for utxo in psbt_vin:
-        txout = await btcd.gettxout(utxo["txid"], utxo["vout"])
+        txout = await btd_client.gettxout(utxo["txid"], utxo["vout"])
         if not txout:
             raise UtxoError
         # Get relative lock
@@ -298,13 +301,31 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
     spend_amount = 0
     psbt_vout = decoded_psbt["tx"]["vout"]
     for vout in psbt_vout:
-        spend_amount += vout["value"]
-        recpt = {
-            "address": vout["scriptPubKey"]["address"],  # Some vout contain multiple addresses; we expect only one.
-            "value": vout["value"]
-        }
-        recipient.append(recpt)
+        address = vout["scriptPubKey"]["address"]
 
+        # Check for change address
+        is_changeaddress = False
+
+        addr_info = await btd_client.getaddressinfo(address)
+        ismine = addr_info["ismine"]
+
+        if not addr_info["ismine"]:
+            changeaddr_info = await btd_change_client.getaddressinfo(address)
+            if changeaddr_info["ismine"]:
+                is_changeaddress = True
+                ismine = True
+            else:
+                spend_amount += vout["value"]
+
+        recv = {
+            "address": address,  # Some vout contain multiple addresses; we expect only one.
+            "value": vout["value"],
+            "is_changeaddress": is_changeaddress,
+            "ismine": ismine
+        }
+        recipient.append(recv)
+
+    print("\nspend_amount: ", spend_amount)
         
     #self.can_spend_all_utxo
 

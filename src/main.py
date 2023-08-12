@@ -163,25 +163,43 @@ def local_main(debug: Optional[bool] = False, port: Optional[int] = 7767):
     bitcoind = config.get("bitcoind")
     rpc_url = bitcoind["rpc_url"] if re.search("/wallet" ,bitcoind["rpc_url"]) else\
         f"{bitcoind['rpc_url']}/wallet/{config.get('wallet')['wallet_name']}"
-    btcd = BitcoindRPC(
+    btd_client = BitcoindRPC(
         rpc_url,
         bitcoind["bitcoind_rpc_user"],
         bitcoind["bitcoind_rpc_password"]
     )
 
-    config.set({"client": btcd}, "bitcoind")
+    # Initialize bitcoind rpc client for change wallet
+    bitcoind = config.get("bitcoind")
+
+    search = re.search("/wallet" ,bitcoind["rpc_url"])
+    rpc_url = f"{bitcoind['rpc_url'][0:(search.span[1]-1)]}/{config.get('wallet')['change_wallet_name']}" if search  else\
+        f"{bitcoind['rpc_url']}/wallet/{config.get('wallet')['wallet_name']}"
+    btd_change_client = BitcoindRPC(
+        rpc_url,
+        bitcoind["bitcoind_rpc_user"],
+        bitcoind["bitcoind_rpc_password"]
+    )
+
+
+    config.set({"client": btd_client}, "bitcoind")
+    config.set({"change_client": btd_change_client}, "bitcoind")
+
 
     # Analyse Descriptor
     descriptor_analysis(config)
 
     # Create tables
-    try:    
-        Session.execute(UTXOS_SCHEMA)
-        Session.execute(SPENT_UTXOS_SCHEMA)
-        Session.execute(AGGREGATE_SPENDS_SCHEMA)
-        Session.execute(SIGNED_SPENDS_SCHEMA)
+    try:
+        cursor = Session.cursor()
+        cursor.executescript(UTXOS_SCHEMA)
+        cursor.executescript(SPENT_UTXOS_SCHEMA)
+        cursor.executescript(AGGREGATE_SPENDS_SCHEMA)
+        cursor.executescript(SIGNED_SPENDS_SCHEMA)
+        cursor.close()
     except OperationalError as e:
         if not e.__repr__() == "OperationalError('table utxos already exists')":
+            print(e)
             raise ServerError(e)
  
     # Insert the only record in AggregateSpends Table

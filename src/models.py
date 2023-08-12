@@ -195,12 +195,12 @@ class AggregateSpends(BaseModel):
     _table: str = "AGGREGATE_SPENDS"
     _primary_key: bool = False
     _columns: List = [
-        "confirmed_daily_spends",
         "unconfirmed_daily_spends",
-        "confirmed_weekly_spends",
+        "confirmed_daily_spends",
         "unconfirmed_weekly_spends",
+        "confirmed_weekly_spends",
+        "unconfirmed_monthly_spends",
         "confirmed_monthly_spends",
-        "unconfirmed_monthly_spends"
     ]
 
     @classmethod
