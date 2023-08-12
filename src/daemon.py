@@ -30,10 +30,10 @@ BLOCK_TIME = 10*60  # Approx time to create a block
 def async_wrapper(func, params):
     asyncio.run(func(*params))
 
-async def async_looper(btcd):
+async def async_looper(btd_client):
     while True:
         start_time = time.time()
-        await asyncio.gather(sync_utxos(btcd), sync_aggregate_spends(btcd))
+        await asyncio.gather(sync_utxos(btd_client), sync_aggregate_spends(btd_client))
 
         end_time = time.time()
         if (end_time - start_time) < BLOCK_TIME:
@@ -55,10 +55,10 @@ def sync_looper(config, timer):
             time.sleep(BLOCK_TIME - (end_time - start_time))
 
 
-async def sync_utxos(btcd: BitcoindRPC):
-    tip = await btcd.getblockcount()
-    unspent = await btcd.listunspent()
-    receive = await btcd.listreceivedbyaddress()
+async def sync_utxos(btd_client: BitcoindRPC):
+    tip = await btd_client.getblockcount()
+    unspent = await btd_client.listunspent()
+    receive = await btd_client.listreceivedbyaddress()
 
     coins = Utxos.get()
     utxo_is_in_db = False
@@ -95,7 +95,7 @@ async def sync_utxos(btcd: BitcoindRPC):
         utxo_has_been_spent = True
 
 
-async def sync_aggregate_spends(btcd: BitcoindRPC):
+async def sync_aggregate_spends(btd_client: BitcoindRPC):
     signed_spends = SignedSpends.get()
     spent_utxos = SpentUtxos.get()
     if bool(signed_spends):
@@ -104,10 +104,10 @@ async def sync_aggregate_spends(btcd: BitcoindRPC):
 
             txout = None
             if not row["confirmed"]:
-                txout = await btcd.gettxout(spent_utxos["txid"], spent_utxos["vout"])
+                txout = await btd_client.gettxout(spent_utxos["txid"], spent_utxos["vout"])
                 if not txout:
                     SignedSpends.update({"confirmed": True}, {"utxo_id": row["utxo_id"]})
-                    agg_spends = AggregateSpends.get()
+                    agg_spends = AggregateSpends.get()[0]
                     AggregateSpends.update(
                         {
                             "confirmed_daily_spends": agg_spends["confirmed_daily_spends"] + row["amount_sats"],
@@ -140,7 +140,7 @@ def reset_aggregate_spends(config: Configuration, timer: SpendLimit):
         }, "timer")
 
 def daemon(config: Configuration):
-    btcd = config.get("bitcoind")["client"]
+    btd_client = config.get("bitcoind")["client"]
     timer = SpendLimit(config)
 
     config.set({
@@ -149,7 +149,7 @@ def daemon(config: Configuration):
         "days_passed_since_last_month": timer._days_passed_since_last_month
         }, "timer")
 
-    thread1 = threading.Thread(target=async_wrapper, args=(async_looper, [btcd]))
+    thread1 = threading.Thread(target=async_wrapper, args=(async_looper, [btd_client]))
     thread2 = threading.Thread(target=sync_looper, args=([config, timer]))
 
     thread1.start()

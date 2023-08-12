@@ -69,7 +69,7 @@ class SpendLimit(Policy):
 
         if self.is_defined():
             aggregate_spend = AggregateSpends.get(
-                ["confirmed_daily_spends", "confirmed_daily_spends", "confirmed_weekly_spends", "confirmed_monthly_spends"]
+                ["confirmed_daily_spends", "confirmed_weekly_spends", "confirmed_monthly_spends"]
             )[0]
 
             print("aggregate_spend: ", aggregate_spend)
@@ -90,7 +90,7 @@ class SpendLimit(Policy):
 
     @property
     def __t_struct(self):
-        if not self._config.get("use_servertime"):
+        if "use_servertime" not in self._config.get("resigner_config"):
             return time.gmtime()
         else:
             return time.gmtime(time.time() - self._config.get("utc_offset"))
