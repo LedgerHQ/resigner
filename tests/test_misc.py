@@ -22,8 +22,7 @@ DESCRIPTORS = [
     f"wsh(and_v(or_c(pk({resigner_xpriv}),or_c(pk({recovery_key}),v:older(12990))),pk({participant_2})))"
 ]
 
-#@pytest.mark.parameterize("desc", DESCRIPTORS)
-def test_descriptors(config, bitcoind):
+def test_descriptors(config):
 
     # Single user
     config.set({"desc": DESCRIPTORS[0]}, "wallet")
