@@ -1,5 +1,9 @@
-from .src import local_main
-from .src import Configuration
-from .src import BitcoindRPC, BitcoindRPCError
-from .src import descriptor_analysis
-from .src import IncompatibleDescriptor
+from .src import (
+    local_main,
+    Configuration,
+    AggregateSpends,
+    BitcoindRPC,
+    BitcoindRPCError,
+    descriptor_analysis,
+    IncompatibleDescriptor,
+)
