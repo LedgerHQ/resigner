@@ -1,9 +1,9 @@
+import os
 import sqlite3
 
-
 class Database:
-    def __init__(self, path: str = "resigner.db", **kwargs):
-        self.connection = sqlite3.connect(path, check_same_thread=False, **kwargs)
+    def __init__(self, path, **kwargs):
+        self.connection = sqlite3.connect(path, timeout=100, check_same_thread=False, **kwargs)
 
 
-Session = Database().connection
+Session = Database(os.getenv("RESIGNER_DB_URI") or "resigner.db" ).connection
