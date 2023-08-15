@@ -20,9 +20,15 @@ from .bip380.descriptors import (
 
 from .crypto.hd import HDPrivateKey, HDPublicKey
 from .config import Configuration
-from .models import Utxos
-# from psbt import PSBT
+from .models import (
+    Utxos,
+    SpentUtxos,
+    SignedSpends,
+    AggregateSpends
+)
 
+
+SATS = 100000000
 
 def descriptor_analysis(config: Configuration) -> None:
     MIN_LOCKTIME_SECS: int = 7776000  # Minimum time that should elapse before a user can spend without Resigner
@@ -219,7 +225,6 @@ class UtxosType(TypedDict):
     txid: str
     vout: int
     value: int
-    partial_signatures: List
     hex: str
     # Extra information for signer?
     can_be_spent_without_resigner: bool
@@ -262,11 +267,11 @@ class ResignerPsbt:
 
 
 
-async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPsbt:
+def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPsbt:
     btd_client = config.get("bitcoind")["client"]
     btd_change_client = config.get("bitcoind")["change_client"]
 
-    decoded_psbt = await btd_client.decodepsbt(psbt)
+    decoded_psbt =  btd_client.decodepsbt(psbt)
     psbt_vin = decoded_psbt["tx"]["vin"]
 
     # for key, value in decoded_psbt["tx"].items():
@@ -276,26 +281,47 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
     recipient: List[Recipient] = []
 
     wallet = config.get("wallet")
-
+    lock_value = None
+    if "lock_value" in wallet:
+        lock_value = wallet["lock_value"] if wallet["lock_type"] == 1 else (wallet["lock_value"]/(60*10))
     # build utxo list
     for utxo in psbt_vin:
-        txout = await btd_client.gettxout(utxo["txid"], utxo["vout"])
+        txout =  btd_client.gettxout(utxo["txid"], utxo["vout"])
         if not txout:
-            raise UtxoError
+            raise UtxoError(f"UTXO txid:{utxo['txid']}, vout: utxo['vout'], appears to have been spent")
         # Get relative lock
-        lock_value = wallet["lock_value"] if wallet["lock_type"] == 1 else (wallet["lock_value"]/(60*10))
+        lock_value = lock_value
         tx_utxo = {
                     "txid": utxo["txid"],
                     "vout": utxo["vout"],
                     "value": txout["value"],
                     "safe_to_spend": (txout["confirmations"] >= 6) if not txout["coinbase"] else (txout["confirmations"] >= 100),
-                    "can_be_spent_without_resigner": (lock_value >= txout["confirmations"])
+                    "can_be_spent_without_resigner": False if lock_value is None else (lock_value >= txout["confirmations"])
         }
 
-        if Utxos.get([], {"txid": utxo["txid"], "vout": utxo["vout"]}):
-                utxos.append(tx_utxo)
+        # Check that the utxo is in the db.
+        # We should check that the utxo isn't really our, just incase we haven't synced with the blockchain
+        coin = Utxos.get([], {"txid": utxo["txid"], "vout": utxo["vout"]})
+        if coin:
+            utxos.append(tx_utxo)
+            # Check if tx is replaces an already signed but uncomfirmed tx (some version of Replace-by-fee(RBF))
+            spentutxo = SpentUtxos.get([], {"txid": utxo["txid"], "vout": utxo["vout"]})
+            if spentutxo:
+                SpentUtxos.delete({"psbt_id": spentutxo[0]["psbt_id"]})
+                prv_signed_psbt = SignedSpends.get([], {"id": spentutxo[0]["psbt_id"]})
+                if prv_signed_psbt:
+                    SignedSpends.delete({"id": spentutxo[0]["psbt_id"]})
+                    agg_spend = AggregateSpends.get([])[0]
+                    AggregateSpends.update(
+                        {
+                            "unconfirmed_daily_spends": agg_spend["unconfirmed_daily_spends"] - prv_signed_psbt[0]["amount_sats"],
+                            "unconfirmed_weekly_spends": agg_spend["unconfirmed_weekly_spends"] - prv_signed_psbt[0]["amount_sats"],
+                            "unconfirmed_monthly_spends": agg_spend["unconfirmed_monthly_spends"] - prv_signed_psbt[0]["amount_sats"]
+                        }
+                    )
+
         else:
-                third_party_utxos.append(tx_utxo)
+            third_party_utxos.append(tx_utxo)
 
     # Get receipients
     spend_amount = 0
@@ -306,11 +332,11 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
         # Check for change address
         is_changeaddress = False
 
-        addr_info = await btd_client.getaddressinfo(address)
+        addr_info = btd_client.getaddressinfo(address)
         ismine = addr_info["ismine"]
 
         if not addr_info["ismine"]:
-            changeaddr_info = await btd_change_client.getaddressinfo(address)
+            changeaddr_info = btd_change_client.getaddressinfo(address)
             if changeaddr_info["ismine"]:
                 is_changeaddress = True
                 ismine = True
@@ -324,8 +350,6 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
             "ismine": ismine
         }
         recipient.append(recv)
-
-    print("\nspend_amount: ", spend_amount)
         
     #self.can_spend_all_utxo
 
@@ -354,7 +378,7 @@ async def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> Resi
             utxos,
             third_party_utxos,
             recipient,
-            spend_amount*100000000,
+            spend_amount*SATS,
             fee,
             safe_to_sign
         )
