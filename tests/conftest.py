@@ -1,85 +1,107 @@
 import os
 import sys
 import time
-from multiprocessing import Process
-
+import tempfile
 import pytest
 
 from ..src import Configuration
 from ..src import BitcoindRPC, BitcoindRPCError
-from ..src import local_main
+from ..src.main import create_app, init_db
+from ..src.daemon import sync_utxos
+from ..src.policy import (
+    Policy,
+    PolicyHandler,
+    PolicyException,
+    SpendLimit
+)
 
-CONFIG_FILES = [
-    "config_test.toml"
-]
+from ..src.models import (
+    Utxos,
+    SpentUtxos,
+    SignedSpends,
+    AggregateSpends
+)
 
-PORTS = [
-    7767
-]
+from .test_framework.utils import fund_address, createpsbt, reset_aggregate_spends
 
-@pytest.fixture(scope="session", autouse=True)
-def setup_resigner_for_tests():     
-    services = []
-    iterator = 0
+CONFIG_FILE = "config_test.toml"
 
-    for file, port in zip(CONFIG_FILES, PORTS):
-            os.environ["RESIGNER_CONFIG_PATH"] = f"{os.getcwd()}/tests/{file}"
-            service = Process(target=local_main, args=(True, port))
-            service.start()
-            services.append(service)
-    yield None
-    print(f"Terminating services: {len(services)}")
-    for service in services:
-        service.join()
-        service.terminate()
-        service.close()
-
-@pytest.fixture(scope="session", autouse=True)
-def  service_url():
-    return [f"http://127.0.0.1:{port}/process-psbt" for port in PORTS]
-
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def config():
-    return Configuration(f"{os.getcwd()}/tests/{CONFIG_FILES[0]}")
+    return Configuration(f"{os.getcwd()}/tests/{CONFIG_FILE}")
 
-@pytest.fixture(scope="function")
-async def bitcoind(config):
-    bitcoind = config.get("bitcoind")
-    btcd = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
-    return btcd
+@pytest.fixture(scope="session", autouse=True)
+def app(config, resigner_wallet, resigner_change_wallet):
+    db_fd, db_path = tempfile.mkstemp()
+    os.environ["RESIGNER_DB_URL"] = db_path
+
+    policy_handler = PolicyHandler()
+    policy_handler.register_policy(
+        [
+            SpendLimit(config),
+        ]
+    )
+
+    config.set({"client": resigner_wallet}, "bitcoind")
+    config.set({"change_client": resigner_change_wallet}, "bitcoind")
+
+    app = create_app(config, policy_handler)
+    app.config.update({
+        "TESTING": True,
+    })
+    init_db()
+    yield app
+    os.close(db_fd)
+    os.unlink(db_path)
 
 @pytest.fixture(scope="function", autouse=True)
-async def funder(config):
-    bitcoind = config.get("bitcoind")
-    btcd = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
-    wallet_name = "testwallet"
-   
-    wallets = (await btcd.listwalletdir())["wallets"]
-
-    print(wallets, file=sys.stderr)
-
-    if not any(wallet["name"] == wallet_name for wallet in wallets):
-        await btcd.createwallet(wallet_name, False, False, "", False, True)
-
-    btcd._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
-    address = await btcd.getnewaddress()
-    #await btcd.generatetoaddress(101, address)
-
-    yield btcd
-    pass
+def client(app, sync_db):
+    return app.test_client()
 
 @pytest.fixture(scope="function")
-async def multisig_wallet_1(config):
-    bitcoind = config.get("bitcoind")
-    btcd = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
-    wallet_name = "multisig_wallet_1"
+def reset_db():
+    reset_aggregate_spends()
+    Utxos.delete()
+    SpentUtxos.delete()
+    SignedSpends.delete()
 
-    wallets = (await btcd.listwalletdir())["wallets"]
+@pytest.fixture(scope="function", autouse=True)
+def sync_db(resigner_wallet, reset_db):
+    sync_utxos(resigner_wallet, None)
+
+@pytest.fixture(scope="session", autouse=True)
+def funder(config):
+    bitcoind = config.get("bitcoind")
+    btd_client = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
+    wallet_name = "testwallet"
+   
+    wallets = (btd_client.listwalletdir())["wallets"]
 
     if not any(wallet["name"] == wallet_name for wallet in wallets):
-        await btcd.createwallet(wallet_name, False, True, "", False, True)
+        btd_client.createwallet(wallet_name, False, False, "", False, True)
 
-        btcd._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
+    btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
+    address = btd_client.getnewaddress()
+
+    balance = btd_client.getbalance(minconf=101)
+    if balance < 50 :
+        btd_client.generatetoaddress(101, address)
+
+    yield btd_client
+    pass
+
+@pytest.fixture(scope="session", autouse=True)
+def resigner_wallet(config, funder):
+    bitcoind = config.get("bitcoind")
+    btd_client = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
+    wallet_name = "resigner_wallet"
+
+    wallets = (btd_client.listwalletdir())["wallets"]
+
+    if not any(wallet["name"] == wallet_name for wallet in wallets):
+        btd_client.createwallet(wallet_name, False, True, "", False, True)
+
+        btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
         wallet = config.get("wallet")
         desc = wallet["desc"]
 
@@ -93,36 +115,101 @@ async def multisig_wallet_1(config):
             }
         ]
 
-        res = await btcd.importdescriptors(request)
+        res = btd_client.importdescriptors(request)
     else:
-        btcd._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
+        btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
 
-    yield btcd
+
+    iterator = 0
+    while iterator < 10:
+        addr = btd_client.getnewaddress()
+        fund_address(addr, funder, 0.2)
+        unspent = btd_client.listunspent(7, 100, [addr])
+        if not unspent:
+            pytest.fail("failed to fund resigner wallet")
+        iterator += 1
+
+    yield btd_client
     pass
 
-@pytest.fixture(scope="function")
-async def user_wallet_1(config):
+@pytest.fixture(scope="session", autouse=True)
+def resigner_change_wallet(config):
     bitcoind = config.get("bitcoind")
-    btcd = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
-    wallet_name = "user_wallet_1"
+    btd_client = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
+    wallet_name = "resigner_change_wallet"
 
-    wallets = (await btcd.listwalletdir())["wallets"]
+    wallets = (btd_client.listwalletdir())["wallets"]
 
     if not any(wallet["name"] == wallet_name for wallet in wallets):
-        await btcd.createwallet(wallet_name, False, True, "", False, True)
+        btd_client.createwallet(wallet_name, False, True, "", False, True)
 
-        btcd._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
+        btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
+        wallet = config.get("wallet")
+        desc = wallet["change_desc"]
+
+        request = [
+            {
+                'desc': desc,
+                'active': True,
+                'range': [0, 1000],
+                'next_index': 0,
+                'timestamp': 'now'
+            }
+        ]
+
+        res = btd_client.importdescriptors(request)
+    else:
+        btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
+
+    yield btd_client
+    pass
+
+@pytest.fixture(scope="session")
+def user_wallet_1(config):
+    bitcoind = config.get("bitcoind")
+    btd_client = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
+    wallet_name = "user_wallet_1"
+
+    wallets = (btd_client.listwalletdir())["wallets"]
+
+    if not any(wallet["name"] == wallet_name for wallet in wallets):
+        btd_client.createwallet(wallet_name, False, True, "", False, True)
+
+        btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
 
         desc = "wsh(and_v(v:pk(tprv8ZgxMBicQKsPd2JjaqU5FBPphchnxPV2fuE53v3TwR1EEYRWcJp4u9oj7E7VeGouzveBssGRrw8QRMevu2oBgPgWVy5CUAz8HU1AFCWnmiQ/0/*),or_d(pk(tpubD6NzVbkrYhZ4WN9NnX8AAbqBiLg2w2Skdma6UCjeXjeHt6d4at2ccWw7z4TRkdP6JzbTHiUn4Cyv8QcztoGXooUsP2Dud1AHLyUsCf1ekPU/0/*),older(12960))))#fj0wq55q"
         request = [
             {'desc': desc, 'active': True, 'range': [0, 1000], 'next_index': 0, 'timestamp': 'now'}
         ]
 
-        await btcd.importdescriptors(request)
+        btd_client.importdescriptors(request)
     else:
-        btcd._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
+        btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
 
-    yield btcd
+    yield btd_client
     pass
 
+@pytest.fixture(scope="session")
+def user_change_wallet_1(config):
+    bitcoind = config.get("bitcoind")
+    btd_client = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
+    wallet_name = "user_change_wallet_1"
 
+    wallets = (btd_client.listwalletdir())["wallets"]
+
+    if not any(wallet["name"] == wallet_name for wallet in wallets):
+        btd_client.createwallet(wallet_name, False, True, "", False, True)
+
+        btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
+
+        desc = "wsh(and_v(v:pk(tprv8ZgxMBicQKsPd2JjaqU5FBPphchnxPV2fuE53v3TwR1EEYRWcJp4u9oj7E7VeGouzveBssGRrw8QRMevu2oBgPgWVy5CUAz8HU1AFCWnmiQ/1/*),or_d(pk(tpubD6NzVbkrYhZ4WN9NnX8AAbqBiLg2w2Skdma6UCjeXjeHt6d4at2ccWw7z4TRkdP6JzbTHiUn4Cyv8QcztoGXooUsP2Dud1AHLyUsCf1ekPU/1/*),older(12960))))#ghhv5pka"
+        request = [
+            {'desc': desc, 'active': True, 'range': [0, 1000], 'next_index': 0, 'timestamp': 'now'}
+        ]
+
+        btd_client.importdescriptors(request)
+    else:
+        btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
+
+    yield btd_client
+    pass
