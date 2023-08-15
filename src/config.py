@@ -39,8 +39,6 @@ class Configuration:
 
             if "rpc_url" not in self.config["bitcoind"]:
                 self.set({"rpc_url": os.getenv("RESIGNER_RPC_URL")}, "bitcoind")
-
-        print("config: ", self.config)
  
     def get(self, key: str) -> Union[Dict, str]:
         if key in self.config:
