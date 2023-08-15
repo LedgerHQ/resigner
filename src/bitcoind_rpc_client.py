@@ -26,19 +26,17 @@ class BitcoindRPC:
         headers = {"content-type": "application/json"}
         timeout = httpx.Timeout(10.0, read=100)
         limits = httpx.Limits(max_keepalive_connections=0, max_connections=None, keepalive_expiry=0)
-        self.client = httpx.AsyncClient(auth=auth, headers=headers, timeout=timeout, limits=limits)
+        self.client = httpx.Client(auth=auth, headers=headers, timeout=timeout, limits=limits)
 
 
-    async def __async_exit__(self):
-        await self.client.aclose()
+    def _exit_(self):
+        self.client.close()
 
-    async def async_call(self, method: str, params, **kwargs):
+    def call(self, method: str, params, **kwargs):
         """
         Initiate JSONRPC call.
         """
-        #print("rpc method:", method, " RPC url: ", self._url)
-        #print("rpc parameters:", params)
-        req = self.client.post(
+        response = self.client.post(
             url=self._url,
             content=orjson.dumps(
                 {
@@ -50,72 +48,72 @@ class BitcoindRPC:
             ),
             **kwargs,
         )
-        r = await req
-        #print("response: ", r._content)
-        resp = orjson.loads(r.content or r._content)
+        response_content = orjson.loads(response.content or response._content)
 
-        if resp["error"] is not None:
-            raise BitcoindRPCError(resp["error"]["code"], resp["error"]["message"])
+        # close the connection pool
+        #self._exit_()
+        if response_content["error"] is not None:
+            raise BitcoindRPCError(response_content["error"]["code"], response_content["error"]["message"])
         else:
-            return resp["result"]
+            return response_content["result"]
 
-    async def getblockchaininfo(self):
-        return await self.async_call("getblockchaininfo", [])
+    def getblockchaininfo(self):
+        return self.call("getblockchaininfo", [])
 
-    async def getbestblockhash(self):
-        return await self.async_call("getbestblockhash", [])
+    def getbestblockhash(self):
+        return self.call("getbestblockhash", [])
 
-    async def getblockhash(self, height: int):
-        return await self.async_call("getblockhash", [height])
+    def getblockhash(self, height: int):
+        return self.call("getblockhash", [height])
 
-    async def getblockcount(self):
-        return await self.async_call("getblockcount", [])
+    def getblockcount(self):
+        return self.call("getblockcount", [])
 
-    async def getblockheader(self, block_hash: str, verbose: bool = True):
-        return await self.async_call("getblockheader", [block_hash, verbose])
+    def getblockheader(self, block_hash: str, verbose: bool = True):
+        return self.call("getblockheader", [block_hash, verbose])
 
-    async def getblockstats(self, hash_or_height: Union[int, str], *keys: str):
-        return await self.async_call(
+    def getblockstats(self, hash_or_height: Union[int, str], *keys: str):
+        return self.call(
             "getblockstats",
             [hash_or_height, list(keys) or None],
         )
 
-    async def getblock(self, block_hash: str, verbosity: Literal[0, 1, 2] = 1):
-        return await self.async_call(
+    def getblock(self, block_hash: str, verbosity: Literal[0, 1, 2] = 1):
+        return self.call(
             "getblock", [block_hash, verbosity]
         )
 
-    async def gettxout(self, txid: str, n: int, include_mempool: Optional[bool] = True):
-        return await self.async_call(
+    def gettxout(self, txid: str, n: int, include_mempool: Optional[bool] = True):
+        return self.call(
             "gettxout",
             [txid, n, include_mempool]
         )
 
-    async def listsinceblock(
+    def listsinceblock(
         self,
         block_hash: str,
         target_confirmations: Optional[int] = 1,
         include_watchonly: Optional[bool] = True,
         include_removed: Optional[bool] = True
     ):
-        return await self.async_call(
+        return self.call(
             "listsinceblock",
             [block_hash, target_confirmations, include_watchonly, include_removed]
         )
 
-    async def listunspent(
+    def listunspent(
         self,
         minconf: Optional[int] = 1,
         maxconf: Optional[int] = 9999999,
         addresses: Optional[List] = None,
         query_options: Optional[Dict] = None,
     ):
-        return await self.async_call(
+        return self.call(
             "listunspent",
             [minconf, maxconf, addresses, query_options]
         )
 
-    async def scanblocks(
+    def scanblocks(
         self,
         action: Literal["start", "stop", "status"],
         scanobjects: Optional[List] = None,
@@ -124,27 +122,27 @@ class BitcoindRPC:
         filtertype: Optional[str] = "basic",
         options: Optional[Dict] = None
     ):
-        return await self.async_call(
+        return self.call(
             "scanblocks",
             [action, scanobjects, start_height, stop_height, filtertype, options]
         )
 
-    async def getbalance(
+    def getbalance(
         self,
         dummy: Optional[Literal["*"]] = "*",
         minconf: Optional[int] = 0,
         include_watchonly: Optional[bool] = False,  # True for watch-only wallets, otherwise false
-        avoid_reuse: Optional[bool] = True  # Only available if avoid_reuse wallet flag is set
+        avoid_reuse: Optional[bool] = False  # Only available if avoid_reuse wallet flag is set
     ):
-        return await self.async_call(
+        return self.call(
             "getbalance",
             [dummy, minconf, include_watchonly, avoid_reuse]
         )
 
-    async def getwalletinfo(self):
-        return await self.async_call("getwalletinfo", [])
+    def getwalletinfo(self):
+        return self.call("getwalletinfo", [])
 
-    async def gettransaction(
+    def gettransaction(
         self,
         txid: str,
         include_watchonly: Optional[bool] = True,  # true for watch-only wallets, otherwise false
@@ -153,29 +151,29 @@ class BitcoindRPC:
         """
         <https://developer.bitcoin.org/reference/rpc/gettransaction.html>
         """
-        return await self.async_call(
+        return self.call(
             "gettransaction",
             [txid, include_watchonly, verbose]
         )
 
-    async def getrawtransaction(
+    def getrawtransaction(
         self,
         txid: str,
         verbose: bool = True,
         block_hash: Optional[str] = None,
     ):
-        return await self.async_call(
+        return self.call(
             "getrawtransaction",
             [txid, verbose, block_hash]
         )
 
-    async def generatetoaddress(self, nblocks: int, address: str, matrixes: Optional[int]=1000000):
-        return await self.async_call(
+    def generatetoaddress(self, nblocks: int, address: str, matrixes: Optional[int]=1000000):
+        return self.call(
             "generatetoaddress",
             [nblocks, address, matrixes]
         )
 
-    async def createpsbt(
+    def createpsbt(
         self,
         inputs: List,
         outputs: List,
@@ -186,12 +184,12 @@ class BitcoindRPC:
         <https://developer.bitcoin.org/reference/rpc/createpsbt.html>
         """
 
-        return await self.async_call(
+        return self.call(
             "createpsbt",
             [inputs, outputs, locktime, replaceable]
         )
 
-    async def walletcreatefundedpsbt(
+    def walletcreatefundedpsbt(
         self,
         outputs: List,
         inputs: Optional[List] = [],
@@ -200,40 +198,40 @@ class BitcoindRPC:
         bip32derivs: Optional[bool] = True
     ):
         # Todo: Test
-        return await self.async_call(
+        return self.call(
             "walletcreatefundedpsbt",
             [inputs, outputs]
         )
 
-    async def analysepsbt(self, psbt: str):
-        return await self.async_call("analyzepsbt", [psbt])
+    def analysepsbt(self, psbt: str):
+        return self.call("analyzepsbt", [psbt])
 
-    async def combinepsbt(self, *psbts):
-        return await self.async_call("combinepsbt", psbts)
+    def combinepsbt(self, *psbts):
+        return self.call("combinepsbt", psbts)
 
-    async def decodepsbt(self, psbt: str):
-        return await self.async_call("decodepsbt", [psbt])
+    def decodepsbt(self, psbt: str):
+        return self.call("decodepsbt", [psbt])
 
-    async def finalisepsbt(self, psbt: str, extract: Optional[bool] = True):
-        return await self.async_call("finalizepsbt", [psbt, extract])
+    def finalisepsbt(self, psbt: str, extract: Optional[bool] = True):
+        return self.call("finalizepsbt", [psbt, extract])
 
-    async def joinpsbt(self, *psbts):
-        return await self.async_call("joinpsbts", psbts)
+    def joinpsbt(self, *psbts):
+        return self.call("joinpsbts", psbts)
 
-    async def utxoupdatepsbt(
+    def utxoupdatepsbt(
         self,
         psbt: str,
         descriptors: Optional[List] = None
     ):
         result = None
         if not descriptors:
-            result = await self.async_call("utxoupdatepsbt", [psbt])
+            result = self.call("utxoupdatepsbt", [psbt])
         else:
-            result = await self.async_call("utxoupdatepsbt", [psbt, descriptors])
+            result = self.call("utxoupdatepsbt", [psbt, descriptors])
 
         return result
 
-    async def walletprocesspsbt(
+    def walletprocesspsbt(
         self,
         psbt: str,
         sign: Optional[bool] = True,
@@ -247,12 +245,12 @@ class BitcoindRPC:
         """
         <https://developer.bitcoin.org/reference/rpc/walletprocesspsbt.html>
         """
-        return await self.async_call(
+        return self.call(
             "walletprocesspsbt",
             [psbt, sign, sighashtype, bip32derivs]
         )
 
-    async def createwallet(
+    def createwallet(
         self,
         wallet_name: str,
         disable_private_keys: Optional[bool] = False,
@@ -262,7 +260,7 @@ class BitcoindRPC:
         descriptors: Optional[bool] = False,
         load_on_startup: Optional[bool] = False 
     ):
-        return await self.async_call(
+        return self.call(
             "createwallet",
             [
                 wallet_name,
@@ -275,55 +273,55 @@ class BitcoindRPC:
             ]
         )
 
-    async def importaddress(
+    def importaddress(
         self,
         address: str,
         label: Optional[str] = None,
         rescan: Optional[bool] = True,
         p2sh: Optional[bool] = False
     ):
-        return await self.async_call("importaddress", [address, label, rescan, p2sh])
+        return self.call("importaddress", [address, label, rescan, p2sh])
 
-    async def importmulti(self, request: List, options: Optional[Dict] = None):
-        return await self.async_call("importmulti", [request, options])
+    def importmulti(self, request: List, options: Optional[Dict] = None):
+        return self.call("importmulti", [request, options])
 
-    async def importdescriptors(self, request: List):
-        return await self.async_call("importdescriptors", [request])
+    def importdescriptors(self, request: List):
+        return self.call("importdescriptors", [request])
 
-    async def getnewaddress(self,
+    def getnewaddress(self,
         label: Optional[str] = None,
         address_type: Optional[Literal["legacy, p2sh-segwit", "bech32"]] = None
     ):
-        return await self.async_call(
+        return self.call(
             "getnewaddress",
             [label, address_type]  # TODO: figure out some way to set -rpcwallet
         )
 
-    async def getaddressinfo(self, address: str):
-        return await self.async_call("getaddressinfo", [address])
+    def getaddressinfo(self, address: str):
+        return self.call("getaddressinfo", [address])
 
-    async def listwallets(self):
-        return await self.async_call("listwallets", [])
+    def listwallets(self):
+        return self.call("listwallets", [])
 
-    async def listwalletdir(self):
-        return await self.async_call("listwalletdir", [])
+    def listwalletdir(self):
+        return self.call("listwalletdir", [])
 
-    async def listreceivedbyaddress(
+    def listreceivedbyaddress(
         self,
         minconf: Optional[int] = 1,
         include_empty: Optional[bool] = False,
         include_watchonly: Optional[bool] = True,
         address_filter: Optional[str] = None
     ):
-        return await self.async_call(
+        return self.call(
             "listreceivedbyaddress",
             [minconf, include_empty, include_watchonly, address_filter]
         )
 
-    async def walletlock(self):
-        return await self.async_call("walletlock", [])
+    def walletlock(self):
+        return self.call("walletlock", [])
 
-    async def sendtoaddress(
+    def sendtoaddress(
         self,
         address: str,
         amount: int,
@@ -336,7 +334,7 @@ class BitcoindRPC:
         avoid_reuse: Optional[bool] = False,
         fee_rate: Optional[int] = None
     ):
-        return await self.async_call(
+        return self.call(
             "sendtoaddress",
             [
                 address,
@@ -352,5 +350,5 @@ class BitcoindRPC:
             ]
         )
 
-    async def sendrawtransaction(self, hexstring: str, maxfeerate: Optional[Union[int, str]]=0.10):
-        return await self.async_call("sendrawtransaction", [hexstring, maxfeerate])
+    def sendrawtransaction(self, hexstring: str, maxfeerate: Optional[Union[int, str]]=0.10):
+        return self.call("sendrawtransaction", [hexstring, maxfeerate])
