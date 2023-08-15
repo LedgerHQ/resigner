@@ -61,3 +61,7 @@ class UtxoError(PSBTError):
 class ServerError(Exception):
     def __init__(self, message):
         self.message = message
+
+class DBError(Exception):
+    def __init__(self, message):
+        self.message = message

@@ -32,9 +32,13 @@ class Configuration:
         # Get bitcoind rpc_user and password from env if not in config
         if "bitcoind" not in self.config:
             if "bitcoind_rpc_user" not in self.config["bitcoind"]:
-                self.config["bitcoind"] = {"bitcoind_rpc_user": os.getenv("RPC_USER")}
-            elif "bitcoind_rpc_password" not in self.config["bitcoind"]:
-                self.config["bitcoind"] = {"bitcoind_rpc_password": os.getenv("RPC_PASSWORD")}
+                self.set({"bitcoind_rpc_user": os.getenv("RPC_USER")}, "bitcoind")
+            
+            if "bitcoind_rpc_password" not in self.config["bitcoind"]:
+                self.set({"bitcoind_rpc_password": os.getenv("RPC_PASSWORD")}, "bitcoind")
+
+            if "rpc_url" not in self.config["bitcoind"]:
+                self.set({"rpc_url": os.getenv("RESIGNER_RPC_URL")}, "bitcoind")
  
     def get(self, key: str) -> Union[Dict, str]:
         if key in self.config:
@@ -45,6 +49,9 @@ class Configuration:
     def set(self, key: Dict, section: str = None) -> None:
         if isinstance(key, Dict):
             if section:
-                self.config[section].update(key)
+                if section in self.config:
+                    self.config[section].update(key)
+                else:
+                    self.config[section] = key
             else:
                 self.config.update(key)

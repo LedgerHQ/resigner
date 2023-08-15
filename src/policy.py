@@ -3,7 +3,6 @@ import time
 from typing import List, Dict, Optional
 
 from .config import Configuration
-from .bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
 from .models import AggregateSpends
 from .analysis import ResignerPsbt
 
@@ -35,8 +34,8 @@ class PolicyHandler:
             raise TypeError("psbt must not be None")
         for policy in self.__policy_list:
             if policy.is_defined:
-                if not policy.execute_policy(psbt, **kwargs):
-                    raise PolicyException(f"Failed while executing {policy._name} policy")
+                if not policy.execute_policy(psbt=psbt, **kwargs):
+                    raise PolicyException(f"PSBT Failed to satisfy configured {policy._name} policy")
 
 class SpendLimit(Policy):
     _name: str = "SpendLimit"
@@ -45,12 +44,12 @@ class SpendLimit(Policy):
     monthly_limit: int
     condition: bool = False  # So we fail if policy is not executed
 
-    def __init__(self, psbt: ResignerPsbt, config: Configuration):
-        self._config = config
+    def __init__(self, config: Configuration):
+        self._config: Configuration = config
     
         # Set limits to zero if not defined
         try:
-            spend_cond = config.get("spending_conditions")
+            spend_cond = config.get("spending_limt")
 
             self.daily_limit = spend_cond["daily_limit"] if "daily_limit" in spend_cond else 0
             self.weekly_limit = spend_cond["weekly_limit"] if "weekly_limit" in spend_cond else 0
@@ -65,27 +64,34 @@ class SpendLimit(Policy):
             return False
 
     def execute_policy(self, psbt: ResignerPsbt, **kwargs):
+        psbt=psbt["psbt"]
+        condition: List[bool] = []
 
         if self.is_defined():
-            aggregate_spend = AggregateSpends.get("daily_spends", "weekly_spends", "monthly_spends")
+            aggregate_spend = AggregateSpends.get([])[0]
+
+            total_daily_spends = aggregate_spend["confirmed_daily_spends"] + aggregate_spend["unconfirmed_daily_spends"]
+            total_weekly_spends = aggregate_spend["confirmed_weekly_spends"] + aggregate_spend["unconfirmed_weekly_spends"]
+            total_monthly_spends = aggregate_spend["confirmed_weekly_spends"] + aggregate_spend["unconfirmed_weekly_spends"]
 
             if self.daily_limit > 0:
-                self.condition = (aggregate_spend["daily_spends"] < self.daily_limit and
-                    (aggregate_spend["daily_spends"] + psbt.amount_sats) < self.daily_limit)
+                condition.append((total_daily_spends <= self.daily_limit and
+                    (total_daily_spends + psbt.amount_sats) <= self.daily_limit))
 
             if self.weekly_limit > 0:
-                self.condition = (aggregate_spend["weekly_spends"] < self.weekly_limit and
-                    (aggregate_spend["weekly_spends"] + psbt.amount_sats) < self.weekly_limit)
+                condition.append((total_weekly_spends <= self.weekly_limit and
+                    (total_weekly_spends + psbt.amount_sats) <= self.weekly_limit))
 
             if self.monthly_limit > 0:
-                self.condition = (aggregate_spend["monthly_spends"] < self.monthly_limit and
-                    (aggregate_spend["monthly_spends"] + psbt.amount_sats) < self.monthly_limit)
-
-        return self.condition
+                condition.append((total_monthly_spends <= self.monthly_limit and
+                    (total_monthly_spends + psbt.amount_sats) <= self.monthly_limit))
+        else:
+            return (not self.is_defined())
+        return all(condition)
 
     @property
     def __t_struct(self):
-        if not self._config.get("use_servertime"):
+        if "use_servertime" not in self._config.get("resigner_config"):
             return time.gmtime()
         else:
             return time.gmtime(time.time() - self._config.get("utc_offset"))

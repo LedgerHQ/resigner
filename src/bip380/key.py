@@ -2,7 +2,7 @@ import coincurve
 import copy
 
 from bip32 import BIP32, HARDENED_INDEX
-#from .utils import _deriv_path_str_to_list
+from .utils import _deriv_path_str_to_list
 from .utils.hashes import hash160
 from enum import Enum, auto
 

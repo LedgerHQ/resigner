@@ -1,53 +1,10 @@
 import time
+import re
 from typing import Any, List, Dict, Optional
+from sqlite3 import OperationalError
 
 from .db import Session
-
-# Our coins
-UTXOS_SCHEMA = """CREATE TABLE utxos
-(id INTEGER PRIMARY KEY,
-blockheight INT NOT NULL,
-blocktime INT NOT NULL,
-txid VARCHAR NOT NULL,
-vout INT NOT NULL,
-amount_sats INT NOT NULL,
-UNIQUE (txid, vout))
-"""
-
-# Table containing utxos that have been have been signed but has not yet been committed
-# to the blockchain or has been commited to the blockchain but does not have enough
-#confirmations to survive a blockchain reorganisation
-SPENT_UTXOS_SCHEMA = """CREATE TABLE SPENT_UTXOS
-(id INTEGER PRIMARY KEY NOT NULL,
-txid VARCHAR NOT NULL,
-vout VARCHAR NOT NULL,
-FOREIGN KEY (id) REFERENCES UTXOS(id)
-)
-"""
-
-AGGREGATE_SPENDS_SCHEMA = """CREATE TABLE AGGREGATE_SPENDS
-(unconfirmed_daily_spends INT,
-confirmed_daily_spends INT,
-unconfirmed_weekly_spends INT,
-confirmed_weekly_spends INT,
-unconfirmed_monthly_spends INT,
-confirmed_monthly_spends INT
-);
-"""
-
-# Spend transaction, since we are not responsible for finalizing the transactions
-SIGNED_SPENDS_SCHEMA = """CREATE TABLE SIGNED_SPENDS
-(id INTEGER PRIMARY KEY NOT NULL,
-processed_at INT NOT NULL,
-unsigned_psbt VARCHAR NOT NULL,
-signed_psbt VARCHAR NOT NULL,
-amount_sats INT NOT NULL,
-utxo_id VARCHAR NOT NULL,
-request_timestamp INT,
-confirmed BOOL,
-FOREIGN KEY (utxo_id) REFERENCES SPENT_UTXOS (id)
-);
-"""
+from .errors import DBError
 
 ADDRESS_SCHEMA = """CREATE TABLE addresses (
     receive_address VARCHAR NOT NULL UNIQUE,
@@ -59,37 +16,43 @@ ADDRESS_SCHEMA = """CREATE TABLE addresses (
 class BaseModel:
     _cursor: Any = None
     _columns: List
+    _schema: str
 
-    def __create(self, shema):
-        raise NotImplementedError
+    @classmethod
+    def create(self):
+        """Create table"""
+        try:
+            cursor = Session.cursor()
+            cursor.executescript(self._schema)
+            cursor.close()
+            Session.commit()
+        except OperationalError as e:
+            if not re.search("already exists" , str(e)):
+                raise DBError(str(e))
+
 
     def __insert(self):
         raise NotImplementedError
 
     @classmethod
-    def get(self, args: List, condition: Optional[Dict] = {}):
+    def get(self, args: Optional[List] = [], condition: Optional[Dict] = {}):
         query_condition = []
         query = ""
 
         if bool(condition):
             for key, value in condition.items():
-                query_condition.append(f"{key} = {value} ")
+                query_condition.append(f"{key} = :{key} ")
 
-            query = f"Where {query_condition}"
+            query = f"Where {'AND '.join(query_condition)}"
 
         if bool(args):
-            sql_query = f"""SELECT {",".join(args)}
-                From {self._table}
-                {query};
-            """
+            sql_query = f"SELECT {','.join(args)} From {self._table} {query};"
         else:
-            sql_query = f"SELECT * From {self._table}"
+            sql_query = f"SELECT * From {self._table} {query}"
+            args = self._columns
 
-        self._cursor = Session.execute(sql_query)
-
-        if not bool(args):
-            args = _columns
-
+        self._cursor = Session.execute(sql_query, condition)
+        
         result = []
         for row in self._cursor:
             row_dict = {}
@@ -98,55 +61,78 @@ class BaseModel:
 
             result.append(row_dict)
 
+        # Close cursor object
+        self._cursor.close()
         return result
 
 
     @classmethod
-    def update(self, options: Dict, condition: Optional[Dict] = {}):
+    def update(self, values: Dict, condition: Optional[Dict] = {}):
         query_condition = []
         condition_query = ""
 
         if bool(condition):
             for key, value in condition.items():
-                query_condition.append(f"{key} = {value} ")
+                query_condition.append(f"{key} = :{key} ")
 
-            condition_query = f"Where {query_condition}"
+            condition_query = f"Where {'AND '.join(query_condition)}"
 
-        query = []
-        for key, value in options.items():
-            query.append(f" {key} = {value}")
+        values_query = []
+        for key, value in values.items():
+            values_query.append(f" {key} = :{key}")
 
 
         sql = f"""UPDATE {self._table}
-        SET {", ".join(query)}
+        SET {", ".join(values_query)}
         {condition_query};
         """
-
-        Session.execute(sql).commit()
+        cursor = Session.cursor()
+        cursor.execute(sql, {**values, **condition})
+        cursor.close()
+        Session.commit()
 
     @classmethod
     def filter(self):
         raise NotImplementedError
 
     @classmethod
-    def delete(self, condition: str):
-        sql_query = f"""DELETE FROM {self._table} WHERE {condition};"""
+    def delete(self, condition: Dict = {}):
+        sql_query = ""
+        if bool(condition):
+            query_condition = []
+            for key, value in condition.items():
+                query_condition.append(f"{key} = :{key} ")
 
-        Session.execute(sql_query).commit()
+            sql_query = f"""DELETE FROM {self._table} WHERE {"AND ".join(query_condition)};"""
+        else:
+            sql_query = f"DELETE FROM {self._table};"
+        
+        cursor = Session.cursor()
+        cursor.execute(sql_query, condition)
+        cursor.close()
+        Session.commit()
 
     @classmethod
     def delete_table(self):
         """Drop table from DB"""
         sql_query = f"DROP TABLE {self._table};"
 
-        Session.execute(sql_query).commit()
-
-
-
+        cursor = Session.cursor()
+        cursor.execute(sql_query)
+        cursor.close()
+        Session.commit()
 
 
 class Utxos(BaseModel):
     _table: str = "UTXOS"
+    _schema : str = f"""CREATE TABLE utxos
+        (id INTEGER PRIMARY KEY,
+        blockheight INT NOT NULL,
+        txid VARCHAR NOT NULL,
+        vout INT NOT NULL,
+        amount_sats INT NOT NULL,
+        UNIQUE (txid, vout))
+        """
     _primary_key: bool = True
     _columns: List = [
         "id", "blockheight", "txid", "vout", "amount_sats"
@@ -154,38 +140,68 @@ class Utxos(BaseModel):
 
     @classmethod
     def insert(self, blockheight: int, txid: str, vout: int, amount_sats: int):
-        sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,);"""
+        # initializing size of string
+        #N = 10
+         
+        # using secrets.choice()
+        # generating random strings
+        #primary_key = ''.join(secrets.choice(string.ascii_letters + string.digits) for i in range(N))
 
-        Session.execute(
+        sql = f"""INSERT INTO {self._table} VALUES (NULL,?,?,?,?);"""
+
+        cursor = Session.cursor()
+        cursor.execute(
             sql,
-            [blockheight, blocktime, txid, vout, amount_sats]
-        ).commit()
+            [blockheight, txid, vout, amount_sats]
+        )
+        cursor.close()
+        Session.commit()
 
 
 class SpentUtxos(BaseModel):
     _table: str = "SPENT_UTXOS"
     _primary_key: bool = True
+    _schema: str = """CREATE TABLE SPENT_UTXOS
+        (id INTEGER PRIMARY KEY NOT NULL,
+        txid VARCHAR NOT NULL,
+        vout INT NOT NULL,
+        psbt_id INT NOT NULL,
+        UNIQUE (txid, vout),
+        FOREIGN KEY (psbt_id) REFERENCES SIGNED_SPENDS(id))
+        """
     _columns: List = [
-        "id", "txid", "vout"
+        "id", "txid", "vout", "psbt_id"
     ]
 
     @classmethod
-    def insert(self, _id: int, txid: str, vout: int):
-        sql = f"""INSERT INTO {self._table} VALUES (?,?,?);"""
+    def insert(self, txid: str, vout: int, psbt_id: int):
+        sql = f"""INSERT INTO {self._table} VALUES (NULL,?,?, ?);"""
 
-        Session.execute(sql, [_id, txid, vout]).commit()
+        cursor = Session.cursor()
+        cursor.execute(sql, [txid, vout, psbt_id])
+        cursor.close()
+        Session.commit()
 
 
 class AggregateSpends(BaseModel):
     _table: str = "AGGREGATE_SPENDS"
     _primary_key: bool = False
+    _schema: str = """CREATE TABLE AGGREGATE_SPENDS
+        (unconfirmed_daily_spends INT,
+        confirmed_daily_spends INT,
+        unconfirmed_weekly_spends INT,
+        confirmed_weekly_spends INT,
+        unconfirmed_monthly_spends INT,
+        confirmed_monthly_spends INT
+        );
+        """
     _columns: List = [
-        "confirmed_daily_spends",
         "unconfirmed_daily_spends",
-        "confirmed_weekly_spends",
+        "confirmed_daily_spends",
         "unconfirmed_weekly_spends",
+        "confirmed_weekly_spends",
+        "unconfirmed_monthly_spends",
         "confirmed_monthly_spends",
-        "unconfirmed_monthly_spends"
     ]
 
     @classmethod
@@ -199,7 +215,8 @@ class AggregateSpends(BaseModel):
     ):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?,?);"""
 
-        Session.execute(sql, [
+        cursor = Session.cursor()
+        cursor.execute(sql, [
             confirmed_daily_spends,
             unconfirmed_daily_spends,
             confirmed_weekly_spends,
@@ -207,19 +224,30 @@ class AggregateSpends(BaseModel):
             confirmed_monthly_spends,
             unconfirmed_monthly_spends
             ]
-        ).commit()
+        )
+        cursor.close()
+        Session.commit()
 
 
 class SignedSpends(BaseModel):
     _table: str = "SIGNED_SPENDS"
     _primary_key = True
+    _schema: str = """CREATE TABLE SIGNED_SPENDS
+        (id INTEGER PRIMARY KEY NOT NULL,
+        processed_at INT NOT NULL,
+        unsigned_psbt VARCHAR NOT NULL,
+        signed_psbt VARCHAR NOT NULL,
+        amount_sats INT NOT NULL,
+        request_timestamp INT,
+        confirmed BOOL
+        );
+        """
     _columns: List = [
         "id",
         "processed_at",
         "unsigned_psbt",
         "signed_psbt",
         "amount_sats",
-        "utxo_id",
         "request_timestamp",
         "confirmed"
     ]
@@ -229,23 +257,24 @@ class SignedSpends(BaseModel):
         self,
         unsigned_psbt: str,
         signed_psbt: str,
-        destination: str,
         amount_sats: int,
-        utxo_id: str,
         request_timestamp: Optional[int] = 0,
         confirmed: Optional[bool] = False
     ):
-        sql = f"""INSERT INTO {self._tables} VALUES (?,?,?,?,?,?,?);"""
+        sql = f"""INSERT INTO {self._table} VALUES (NULL,?,?,?,?,?,?);"""
 
-        Session.execute(
+        cursor = Session.cursor()
+        cursor.execute(
             sql,
             [
                 time.time(),
                 unsigned_psbt,
                 signed_psbt,
                 amount_sats,
-                utxo_id,
                 request_timestamp,
                 confirmed
             ]
-        ).commit()
+        )
+        cursor.close()
+        Session.commit()
+ 
