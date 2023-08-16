@@ -10,6 +10,12 @@ Resigner is an easy to program hot signing service for miniscript policies. It p
 
 The Resigner countersigns transactions (according to some rules (spending conditions), set in advance in the configuration file, for example “no more than 1 million satoshis per day”. 
 
+## Usage
+
+The minimum supported version of Bitcoin Core is v25.0.0. If you don't have Bitcoin Core installed on your machine yet, you can download it [here](https://bitcoincore.org/en/download/).
+
+There's a comprehensive guide for using resigner [here](docs/guide.md)
+
 ### What happens if the service disappears?
 
 All miniscript policies registered on the service shall contain locking conditions that allow the user’s keys (possibly in combination with some other key, that is not owned by the signing server) to spend from an UTXO after some time.
