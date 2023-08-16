@@ -32,6 +32,18 @@ from .models import (
 from .analysis import descriptor_analysis, ResignerPsbt, analyse_psbt_from_base64_str
 
 def setup_error_handlers(app):
+    @app.errorhandler(400)
+    def bad_request(e):
+        return jsonify(error_code=400, message="Bad Request"), 400
+
+    @app.errorhandler(404)
+    def route_not_found(e):
+            return jsonify(error_code=404, message="No such endpoint"), 404
+
+    @app.errorhandler(405)
+    def wrong_method(e):
+        return jsonify(error_code=405, message="Only the POST Method is allowed"), 405
+    
     @app.errorhandler(PolicyException)
     def policy_error(e):
         return jsonify(error_code=403, message=str(e)), 403
@@ -39,24 +51,13 @@ def setup_error_handlers(app):
     @app.errorhandler(ServerError)
     def error_handler(e):
         # Todo: log
-        print(e)
         return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
-    @app.errorhandler(400)
-    def bad_request(e):
-        return jsonify(error_code=400, message="Bad Request"), 400
+    @app.errorhandler(Exception)
+    def error_handler(e):
+        # Todo: log
+        return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
-    @app.errorhandler(404)
-    def route_not_found(e):
-            return jsonify(
-                error_code=404,
-                message="No such endpoint",
-                # endpoints=["/process-psbt"] probably shouldn't expose this
-                ), 404
-
-    @app.errorhandler(405)
-    def wrong_method(e):
-        return jsonify(error_code=405, message="Only the POST Method is allowed"), 405
 
 def sign_transaction(psbt: str, config: Configuration):
     btcd = config.get("bitcoind")["client"]
@@ -115,7 +116,7 @@ def create_route(app):
             }
         )
 
-        # Due to bitcoind policies we don't actually know if the psbt was signed. we jus know that it didn't throw an error
+        # Due to bitcoind policies we don't actually know if the psbt was signed. we only know that it didn't throw an error
         return jsonify(psbt=result["psbt"], signed=True)
 
 def create_app(config: Configuration, policy_handler: PolicyHandler, debug=True)-> Flask:
@@ -189,10 +190,22 @@ def local_main(debug: Optional[bool] = False, port: Optional[int] = 7767):
 
     # Set db sync status
     config.set({"synced_db_with_onchain_data": False},"resigner_config")
-    # Setup daemon
-    threading.Thread(target=daemon, args=([config]), daemon=True).start()
 
-    #Todo: Wait on db to sync with the blockchain
+    
+    # Setup daemon
+    condition = threading.Condition()
+    threading.Thread(target=daemon, args=([config, condition]), daemon=True).start()
+
+    print("Syncing db with blockchain. Might take a couple minutes depending on the amount of the unspent utxos")
+    
+    start_sync_time = time.time()
+    def db_is_synced() -> bool:
+        print("syncing db with onchain data took : ", time.time() - start_sync_time, "seconds")
+        return config.get("resigner_config")["synced_db_with_onchain_data"]
+
+    #Wait on db to sync with the blockchain
+    with condition:
+        condition.wait_for(db_is_synced)
 
     # Setup PolicyHandler
     policy_handler = PolicyHandler()

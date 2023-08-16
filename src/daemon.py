@@ -102,7 +102,7 @@ def reset_aggregate_spends(config: Configuration, timer: SpendLimit):
         "days_passed_since_last_month": timer._days_passed_since_last_month
         }, "timer")
 
-def daemon(config: Configuration):
+def daemon(config: Configuration, condition: threading.Condition):
     timer = SpendLimit(config)
 
     config.set({
@@ -114,6 +114,7 @@ def daemon(config: Configuration):
     btd_client = config.get("bitcoind")["client"]
     btd_change_client = config.get("bitcoind")["change_client"]
 
+    condition.acquire()
     synced_db_with_onchain_data = False
     threads = []
     while True:
@@ -130,7 +131,11 @@ def daemon(config: Configuration):
             thread.join()
 
         synced_db_with_onchain_data = True
-        config.set({"synced_db_with_onchain_data": synced_db_with_onchain_data},"resigner_config")
+        if condition._is_owned():
+            config.set({"synced_db_with_onchain_data": synced_db_with_onchain_data},"resigner_config")
+            # Notify main thread
+            condition.notify()
+            condition.release()
 
         end_time = math.floor(time.time())
 
