@@ -8,8 +8,9 @@ from .analysis import ResignerPsbt
 
 
 class PolicyException(Exception):
-    def __init__(self, message):
+    def __init__(self, message, policy):
         self.message = message
+        self.policy = policy
 
 
 class Policy():
@@ -35,7 +36,7 @@ class PolicyHandler:
         for policy in self.__policy_list:
             if policy.is_defined:
                 if not policy.execute_policy(psbt=psbt, **kwargs):
-                    raise PolicyException(f"PSBT Failed to satisfy configured {policy._name} policy")
+                    raise PolicyException(f"PSBT Failed to satisfy configured {policy._name} policy", policy._table)
 
 class SpendLimit(Policy):
     _name: str = "SpendLimit"

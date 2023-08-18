@@ -293,7 +293,8 @@ def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPs
     for utxo in psbt_vin:
         txout =  btd_client.gettxout(utxo["txid"], utxo["vout"])
         if not txout:
-            raise UtxoError(f"UTXO txid:{utxo['txid']}, vout: utxo['vout'], appears to have been spent")
+            logger.error(f"UTXO txid:{utxo['txid']}, vout: {utxo['vout']}, appears to have been spent")
+            raise UtxoError(utxo["txid"], utxo["vout"])
         # Get relative lock
         lock_value = lock_value
         tx_utxo = {
@@ -364,7 +365,7 @@ def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPs
     safe_to_sign = all(utxo["safe_to_spend"] for utxo in utxos)
     if not safe_to_sign:
         logger("PSBT: %s...%s contains unconfirmed UTXOS in it's input", psbt[0:9], psbt[-10:])
-        raise UnsafePSBTError
+        raise UnsafePSBTError(psbt, "PSBT contains unconfirmed or unsafe UTXOS in it's input")
 
     fee = None
     if "fee" in decoded_psbt:

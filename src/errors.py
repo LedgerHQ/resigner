@@ -46,8 +46,9 @@ class PSBTError(Exception):
 
 
 class UnsafePSBTError(PSBTError):
-    def __init__(self, message = "PSBT failed to meet requirements for signing"):
+    def __init__(self, psbt: str, message = "PSBT failed to meet requirements for signing"):
         self.message = message
+        self.psbt = psbt
 
 
 class PSBTPartialSignatureCountError(PSBTError):
@@ -55,8 +56,10 @@ class PSBTPartialSignatureCountError(PSBTError):
         self.message = message
 
 class UtxoError(PSBTError):
-    def __init__(self, message = "UTXO not found in mempool"):
-        self.message = message
+    def __init__(self, txid: str, vout: int, message: str = None):
+        self.message = message or "UTXO specified in the input appears to have been spent"
+        self.txid = txid
+        self.vout = vout
 
 class ServerError(Exception):
     def __init__(self, message):

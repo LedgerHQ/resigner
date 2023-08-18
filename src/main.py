@@ -12,7 +12,7 @@ from sqlite3 import OperationalError, IntegrityError, DatabaseError
 from flask import Flask, jsonify, request
 
 
-from .errors import ServerError
+from .errors import ServerError, UtxoError, UnsafePSBTError, DBError
 from .daemon import daemon
 from .bitcoind_rpc_client import BitcoindRPC, BitcoindRPCError
 from .config import Configuration
@@ -57,9 +57,27 @@ def setup_error_handlers(app):
     def wrong_method(e):
         return jsonify(error_code=405, message="Only the POST Method is allowed"), 405
     
+    @app.errorhandler(UnsafePSBTError)
+    def psbt_error(e):
+        return jsonify(error_code=403, message=e.message), 403
+
+    @app.errorhandler(UtxoError)
+    def utxo_error(e):
+        return jsonify(error_code=403, message=e.message, details={"txid": e.txid, "vout": e.vout}), 403
+
     @app.errorhandler(PolicyException)
     def policy_error(e):
         return jsonify(error_code=403, message=str(e)), 403
+
+    @app.errorhandler(DBError)
+    def dberror_handler(e):
+        logger.error(f"A Database Error: {e} occured while handling request from IP: {request.ip}")
+        return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
+
+    @app.errorhandler(ServerError)
+    def bitcoind_error_handler(BitcoindRPCError):
+        logger.error(f"An unhandled Exception {e} occured in bitcoind rpc while handling request from IP: {request.ip}")
+        return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
     @app.errorhandler(ServerError)
     def error_handler(e):
@@ -82,7 +100,7 @@ def sign_transaction(psbt: str, config: Configuration):
         print("signing psbt failed psbt: ", psbt)
         raise ServerError(e)
 
-    logger.info("Processed PSBT: %s...%s without errors %s", psbt[:9], psbt[-10:])
+    logger.info("Processed PSBT: %s...%s without errors", psbt[:9], psbt[-10:])
     # Todo: implement a proper error reporting
     return signed_psbt
 
