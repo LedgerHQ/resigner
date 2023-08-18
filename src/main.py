@@ -2,6 +2,7 @@ import os
 import re
 import time
 import math
+import logging
 import argparse
 import threading
 
@@ -31,6 +32,18 @@ from .models import (
 
 from .analysis import descriptor_analysis, ResignerPsbt, analyse_psbt_from_base64_str
 
+
+def setup_logging(name="resigner"):  
+    #logging.getLogger("werkzeug").disabled = True
+    logging.getLogger("httpx").disabled = True
+    
+    log_format = "%(levelname)s:%(asctime)s.%(msecs)03d:%(name)s: %(message)s"
+
+    logging.basicConfig(level=logging.INFO, format=log_format, datefmt='%H:%M:%S')
+    logger = logging.getLogger(name)
+
+    return logger
+
 def setup_error_handlers(app):
     @app.errorhandler(400)
     def bad_request(e):
@@ -50,12 +63,12 @@ def setup_error_handlers(app):
 
     @app.errorhandler(ServerError)
     def error_handler(e):
-        # Todo: log
+        logger.error(f"An Internal Server Error {e} occured while handling request from IP: {request.ip}")
         return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
     @app.errorhandler(Exception)
     def error_handler(e):
-        # Todo: log
+        logger.error(f"Unhandled Exception: {e} occured while handling request from IP: {request.ip}")
         return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
 
@@ -63,12 +76,13 @@ def sign_transaction(psbt: str, config: Configuration):
     btcd = config.get("bitcoind")["client"]
     signed_psbt = ""
     try:
-        # Todo: also sign spends from change 
+        # Todo: also sign psbts from containing change utxo inputs 
         signed_psbt = btcd.walletprocesspsbt(psbt)
     except BitcoindRPCError as e:
         print("signing psbt failed psbt: ", psbt)
         raise ServerError(e)
 
+    logger.info("Processed PSBT: %s...%s without errors %s", psbt[:9], psbt[-10:])
     # Todo: implement a proper error reporting
     return signed_psbt
 
@@ -90,8 +104,10 @@ def create_route(app):
 
         # Todo: check if the psbt was actually signed.
         signed = False
+        logger.info("Signing PSBT: %s...%s", args["psbt"][0:9], args["psbt"][-10:])
         result = sign_transaction(args["psbt"], config)
         if result["complete"] is not True:
+            logger.info("Signed PSBT: %s...%s not complete", result[0:9], result[-10:])
             # Todo: should fail here
             pass
 
@@ -107,6 +123,7 @@ def create_route(app):
         for utxo in psbt_obj.utxos:
             SpentUtxos.insert(utxo["txid"], utxo["vout"], tx["id"])
 
+        logger.info("Updating aggregate spends, amount: %d", psbt_obj.amount_sats)
         agg_spends = AggregateSpends.get()[0]
         AggregateSpends.update(
             {
@@ -145,6 +162,9 @@ def init_db():
 
 
 def local_main(debug: Optional[bool] = False, port: Optional[int] = 7767):
+    # Logging
+    logger = setup_logging()
+
     # Setup args
     parser = argparse.ArgumentParser(description='Signing Service for Miniscript Policies.')
     parser.add_argument('--config_path', type=str, help='configuration path')
@@ -180,7 +200,7 @@ def local_main(debug: Optional[bool] = False, port: Optional[int] = 7767):
 
     config.set({"client": btd_client}, "bitcoind")
     config.set({"change_client": btd_change_client}, "bitcoind")
-
+    config.set({"logger": logger})
 
     # Analyse Descriptor
     descriptor_analysis(config)
@@ -196,11 +216,11 @@ def local_main(debug: Optional[bool] = False, port: Optional[int] = 7767):
     condition = threading.Condition()
     threading.Thread(target=daemon, args=([config, condition]), daemon=True).start()
 
-    print("Syncing db with blockchain. Might take a couple minutes depending on the amount of the unspent utxos")
+    logger.info("Syncing db with blockchain. Might take a couple minutes depending on the amount of the utxos")
     
     start_sync_time = time.time()
     def db_is_synced() -> bool:
-        print("syncing db with onchain data took : ", time.time() - start_sync_time, "seconds")
+        logger.info(f"syncing db with onchain data took : {time.time() - start_sync_time} seconds")
         return config.get("resigner_config")["synced_db_with_onchain_data"]
 
     #Wait on db to sync with the blockchain

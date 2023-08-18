@@ -1,5 +1,6 @@
 from typing import Any, List, TypedDict, Optional
 import sys
+import logging
 
 from .errors import (
     PSBTPartialSignatureCountError,
@@ -27,8 +28,9 @@ from .models import (
     AggregateSpends
 )
 
-
 SATS = 100000000
+
+logger = logging.getLogger("resigner")
 
 def descriptor_analysis(config: Configuration) -> None:
     MIN_LOCKTIME_SECS: int = 7776000  # Minimum time that should elapse before a user can spend without Resigner
@@ -61,6 +63,7 @@ def descriptor_analysis(config: Configuration) -> None:
     if len(wsh_desc.keys) < 2:
         raise IncompatibleDescriptor("Requires at least 2 keys in descriptor")
 
+    logger.info("wallet descriptor: %s", wsh_desc)
     # Check for duplicate keys
     dupkeys = []
     keys = []
@@ -216,7 +219,9 @@ def descriptor_analysis(config: Configuration) -> None:
                                 min_required_sigs += 1
                 if sub.needs_sig:
                     # Minimum no of signature required to satisfy miniscript
-                    min_required_sigs += 1 
+                    min_required_sigs += 1
+
+    logger.info("Minimum signatures required to satisfy descriptor: %d", min_required_sigs)
     if min_required_sigs > 0:
         config.set({"min_required_sigs": min_required_sigs}, "wallet")
 
@@ -300,7 +305,7 @@ def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPs
         }
 
         # Check that the utxo is in the db.
-        # We should check that the utxo isn't really our, just incase we haven't synced with the blockchain
+        # TODO: We should check that the utxo isn't really ours, just incase we aren't completely synced with the blockchain
         coin = Utxos.get([], {"txid": utxo["txid"], "vout": utxo["vout"]})
         if coin:
             utxos.append(tx_utxo)
@@ -309,6 +314,8 @@ def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPs
             if spentutxo:
                 SpentUtxos.delete({"psbt_id": spentutxo[0]["psbt_id"]})
                 prv_signed_psbt = SignedSpends.get([], {"id": spentutxo[0]["psbt_id"]})
+                logger.info("PSBT: %s...%s replaces a previously signed psbt: %s...%s",\
+                    psbt[0:9], psbt[-10:], prv_signed_psbt["signed_psbt"][0:9], prv_signed_psbt["signed_psbt"][-10:])
                 if prv_signed_psbt:
                     SignedSpends.delete({"id": spentutxo[0]["psbt_id"]})
                     agg_spend = AggregateSpends.get([])[0]
@@ -328,16 +335,14 @@ def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPs
     psbt_vout = decoded_psbt["tx"]["vout"]
     for vout in psbt_vout:
         address = vout["scriptPubKey"]["address"]
-
-        # Check for change address
-        is_changeaddress = False
-
         addr_info = btd_client.getaddressinfo(address)
         ismine = addr_info["ismine"]
+        is_changeaddress = False
 
         if not addr_info["ismine"]:
             changeaddr_info = btd_change_client.getaddressinfo(address)
             if changeaddr_info["ismine"]:
+                logger.info("address: %s is a change address", address)
                 is_changeaddress = True
                 ismine = True
             else:
@@ -358,6 +363,7 @@ def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPs
 
     safe_to_sign = all(utxo["safe_to_spend"] for utxo in utxos)
     if not safe_to_sign:
+        logger("PSBT: %s...%s contains unconfirmed UTXOS in it's input", psbt[0:9], psbt[-10:])
         raise UnsafePSBTError
 
     fee = None
