@@ -26,8 +26,8 @@ class Configuration:
         # Set timezone offset
         self.config["utc_offset"] = get_utc_offset()
 
-        if "use_servertime" not in self.config:
-            self.config["use_servertime"] = True
+        #if "use_servertime" not in self.config:
+        #    self.config["use_servertime"] = True
 
         # Get bitcoind rpc_user and password from env if not in config
         if "bitcoind" not in self.config:
