@@ -8,6 +8,7 @@
 
 import time
 import math
+import logging
 import asyncio
 import threading
 from sqlite3 import OperationalError
@@ -27,6 +28,13 @@ from .policy import SpendLimit
 SATS=100000000
 BLOCK_TIME = 10*60  # Approx time to create a block
 
+# Logging
+sh = logging.StreamHandler()
+formatter = logging.Formatter("%(levelname)s - %(asctime)s.%(msecs)03d - %(name)s - ThreadId %(thread)d: %(message)s", datefmt='%H:%M:%S')
+sh.setFormatter(formatter)
+
+logger = logging.getLogger("resigner.daemon")
+logger.addHandler(sh)
 
 def sync_utxos(btd_client: BitcoindRPC, btd_change_client: BitcoindRPCError):
 
@@ -35,6 +43,7 @@ def sync_utxos(btd_client: BitcoindRPC, btd_change_client: BitcoindRPCError):
         for utxo in unspent:
             coin = Utxos.get(["id"], {"txid": utxo["txid"], "vout": utxo["vout"]})
             if not coin:
+                logger.debug("Inserting new UTXO into Utxos Table. txid: %s, vout: %d", utxo["txid"], utxo["vout"])
                 Utxos.insert(
                     (tip-utxo["confirmations"]),
                     utxo["txid"],
@@ -47,6 +56,7 @@ def sync_utxos(btd_client: BitcoindRPC, btd_change_client: BitcoindRPCError):
             txout = btd_client.gettxout(coin["txid"], coin["vout"])
             if not txout:
                 # Should not fail
+                logger.debug("Deleting spent UTXO from Utxos Table. txid: %s, vout: %d", coin["txid"], coin["vout"])
                 Utxos.delete({"txid": coin["txid"]})
 
 
@@ -54,10 +64,12 @@ def sync_utxos(btd_client: BitcoindRPC, btd_change_client: BitcoindRPCError):
     tip = btd_client.getblockcount()
     unspent = btd_client.listunspent()
 
+    logger.info("Updating utxos")
     update_utxos(tip, unspent, coins)
 
     if btd_change_client is not None:
         unspent_change = btd_change_client.listunspent()
+        logger.info("Updating change utxos")
         update_utxos(tip, unspent_change, coins)
 
 
@@ -65,11 +77,11 @@ def sync_aggregate_spends(btd_client: BitcoindRPC):
     signed_spends = SignedSpends.get()
     for row in signed_spends:
         spent_utxos = SpentUtxos.get([], {"psbt_id": row["id"]})
-        print("in sync_aggregate_spends: spent_utxos: ", spent_utxos)
         if not row["confirmed"]:
             txouts = [(btd_client.gettxout(spends["txid"], spends["vout"])) for spends in spent_utxos]
             if not all(txouts):
                 SignedSpends.update({"confirmed": True}, {"id": row["id"]})
+                logger.info("Signed psbt: %s has been confirmed on the blockchain", row["signed_psbt"])
                 agg_spends = AggregateSpends.get()[0]
                 AggregateSpends.update(
                     {
@@ -88,12 +100,15 @@ def reset_aggregate_spends(config: Configuration, timer: SpendLimit):
     prvs_time = config.get("timer")
 
     if prvs_time["hrs_passed_since_last_day"] > timer._hrs_passed_since_last_day:
-        AggregateSpends.update({"confirmed_daily_spends": 0})
+        logger.info("Aggregate daily spends has been reset to 0")
+        logger.info("Aggregate spends counted towards the daily limit reset to 0")
 
     if prvs_time["days_passed_since_last_week"] > timer._days_passed_since_last_week:
+        logger.info("Aggregate weekly spends has been reset to 0")
         AggregateSpends.update({"confirmed_weekly_spends": 0})
 
     if prvs_time["days_passed_since_last_month"] > timer._days_passed_since_last_month:
+        logger.info("Aggregate monthly spends has been reset to 0")
         AggregateSpends.update({"confirmed_monthly_spends": 0})
 
     config.set({
@@ -103,6 +118,8 @@ def reset_aggregate_spends(config: Configuration, timer: SpendLimit):
         }, "timer")
 
 def daemon(config: Configuration, condition: threading.Condition):
+    logger.info("resigner daemon starting...")
+
     timer = SpendLimit(config)
 
     config.set({
@@ -130,6 +147,7 @@ def daemon(config: Configuration, condition: threading.Condition):
         for thread in threads:
             thread.join()
 
+        threads.clear()
         synced_db_with_onchain_data = True
         if condition._is_owned():
             config.set({"synced_db_with_onchain_data": synced_db_with_onchain_data},"resigner_config")

@@ -1,4 +1,5 @@
 import time
+import logging
 import re
 from typing import Any, List, Dict, Optional
 from sqlite3 import OperationalError
@@ -13,8 +14,11 @@ ADDRESS_SCHEMA = """CREATE TABLE addresses (
 );
 """
 
+logger = logging.getLogger("resigner")
+
 class BaseModel:
     _cursor: Any = None
+    _table: str
     _columns: List
     _schema: str
 
@@ -22,6 +26,7 @@ class BaseModel:
     def create(self):
         """Create table"""
         try:
+            logger.info("Creating %s table", self._table)
             cursor = Session.cursor()
             cursor.executescript(self._schema)
             cursor.close()
@@ -29,7 +34,7 @@ class BaseModel:
         except OperationalError as e:
             if not re.search("already exists" , str(e)):
                 raise DBError(str(e))
-
+            logger.info("Table: %s already exists in db", self._table)
 
     def __insert(self):
         raise NotImplementedError
@@ -105,6 +110,7 @@ class BaseModel:
 
             sql_query = f"""DELETE FROM {self._table} WHERE {"AND ".join(query_condition)};"""
         else:
+            logger.info("About to truncate %s table", self._table)
             sql_query = f"DELETE FROM {self._table};"
         
         cursor = Session.cursor()
