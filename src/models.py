@@ -1,9 +1,9 @@
+import re
 import time
 import logging
-import re
 from typing import Any, List, Dict, Optional
 from sqlite3 import OperationalError
-
+from threading import RLock
 from .db import Session
 from .errors import DBError
 
@@ -73,6 +73,7 @@ class BaseModel:
 
     @classmethod
     def update(self, values: Dict, condition: Optional[Dict] = {}):
+        rlock = RLock()
         query_condition = []
         condition_query = ""
 
@@ -91,10 +92,11 @@ class BaseModel:
         SET {", ".join(values_query)}
         {condition_query};
         """
-        cursor = Session.cursor()
-        cursor.execute(sql, {**values, **condition})
-        cursor.close()
-        Session.commit()
+        with rlock:
+            cursor = Session.cursor()
+            cursor.execute(sql, {**values, **condition})
+            cursor.close()
+            Session.commit()
 
     @classmethod
     def filter(self):
@@ -102,6 +104,7 @@ class BaseModel:
 
     @classmethod
     def delete(self, condition: Dict = {}):
+        rlock = RLock()
         sql_query = ""
         if bool(condition):
             query_condition = []
@@ -112,17 +115,19 @@ class BaseModel:
         else:
             logger.info("About to truncate %s table", self._table)
             sql_query = f"DELETE FROM {self._table};"
-        
-        cursor = Session.cursor()
-        cursor.execute(sql_query, condition)
-        cursor.close()
-        Session.commit()
+
+        with rlock:
+            cursor = Session.cursor()
+            cursor.execute(sql_query, condition)
+            cursor.close()
+            Session.commit()
 
     @classmethod
     def delete_table(self):
         """Drop table from DB"""
         sql_query = f"DROP TABLE {self._table};"
 
+        # Threads shouldn't be dropping tables willy nilly
         cursor = Session.cursor()
         cursor.execute(sql_query)
         cursor.close()
@@ -155,13 +160,15 @@ class Utxos(BaseModel):
 
         sql = f"""INSERT INTO {self._table} VALUES (NULL,?,?,?,?);"""
 
-        cursor = Session.cursor()
-        cursor.execute(
-            sql,
-            [blockheight, txid, vout, amount_sats]
-        )
-        cursor.close()
-        Session.commit()
+        rlock = RLock()
+        with rlock:
+            cursor = Session.cursor()
+            cursor.execute(
+                sql,
+                [blockheight, txid, vout, amount_sats]
+            )
+            cursor.close()
+            Session.commit()
 
 
 class SpentUtxos(BaseModel):
@@ -183,10 +190,12 @@ class SpentUtxos(BaseModel):
     def insert(self, txid: str, vout: int, psbt_id: int):
         sql = f"""INSERT INTO {self._table} VALUES (NULL,?,?, ?);"""
 
-        cursor = Session.cursor()
-        cursor.execute(sql, [txid, vout, psbt_id])
-        cursor.close()
-        Session.commit()
+        rlock = RLock()
+        with rlock:
+            cursor = Session.cursor()
+            cursor.execute(sql, [txid, vout, psbt_id])
+            cursor.close()
+            Session.commit()
 
 
 class AggregateSpends(BaseModel):
@@ -221,18 +230,20 @@ class AggregateSpends(BaseModel):
     ):
         sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?,?);"""
 
-        cursor = Session.cursor()
-        cursor.execute(sql, [
-            confirmed_daily_spends,
-            unconfirmed_daily_spends,
-            confirmed_weekly_spends,
-            unconfirmed_weekly_spends,
-            confirmed_monthly_spends,
-            unconfirmed_monthly_spends
-            ]
-        )
-        cursor.close()
-        Session.commit()
+        rlock = RLock()
+        with rlock:
+            cursor = Session.cursor()
+            cursor.execute(sql, [
+                confirmed_daily_spends,
+                unconfirmed_daily_spends,
+                confirmed_weekly_spends,
+                unconfirmed_weekly_spends,
+                confirmed_monthly_spends,
+                unconfirmed_monthly_spends
+                ]
+            )
+            cursor.close()
+            Session.commit()
 
 
 class SignedSpends(BaseModel):
@@ -269,18 +280,20 @@ class SignedSpends(BaseModel):
     ):
         sql = f"""INSERT INTO {self._table} VALUES (NULL,?,?,?,?,?,?);"""
 
-        cursor = Session.cursor()
-        cursor.execute(
-            sql,
-            [
-                time.time(),
-                unsigned_psbt,
-                signed_psbt,
-                amount_sats,
-                request_timestamp,
-                confirmed
-            ]
-        )
-        cursor.close()
-        Session.commit()
+        rlock = RLock()
+        with rlock:
+            cursor = Session.cursor()
+            cursor.execute(
+                sql,
+                [
+                    time.time(),
+                    unsigned_psbt,
+                    signed_psbt,
+                    amount_sats,
+                    request_timestamp,
+                    confirmed
+                ]
+            )
+            cursor.close()
+            Session.commit()
  
