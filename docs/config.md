@@ -2,7 +2,7 @@
 
 The configuration file is used by resigner is in the toml file format and consists of option=value entries, one per line. The configuration should have been setup before starting resigner. A comment starts with a number sign (#) and extends to the end of the line.
 
-#### Resigner specific options
+### Resigner specific options
 
 This are configuration options specific to the server
 
@@ -12,7 +12,7 @@ use_servertime = true # use servertime: if not true use UTC+0. Default: True
 node = "bitcoind" # only `bitcoind` is supported
 ```
 
-#### Wallet specific options
+### Wallet specific options
 
 ```
 [wallet]
@@ -30,7 +30,7 @@ lock_type =
 lock_value = 
 ```
 
-#### Bitcoind RPC options
+### Bitcoind RPC options
 
 ```
 [bitcoind]

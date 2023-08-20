@@ -2,10 +2,10 @@
 
 Spending conditions (not miniscript) are rules that would be enforced by Resigner. The rules/policies are composable, flexible and are defined in the TOML format (in the [configuration file](config.md)).
 
-[x] Spending limits in satoshis  (per day/week/month).
-[] Presence of additional 2FA in the PSBT.
-[] Require all cosigners
-[] Whitelist addresses controlled by Resigner.
+- [x] Spending limits in satoshis  (per day/week/month).
+- [] Presence of additional 2FA in the PSBT.
+- [] Require all cosigners
+- [] Whitelist addresses controlled by Resigner.
 
 There is the concept of roles; for example: different rules can be applied to depending on the presence of some valid signature
 
