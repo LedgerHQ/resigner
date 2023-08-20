@@ -45,6 +45,9 @@ def setup_logging(name="resigner"):
     return logger
 
 def setup_error_handlers(app):
+    config = app.config["route_args"]["config"]
+    logger = config.get("logger")
+
     @app.errorhandler(400)
     def bad_request(e):
         return jsonify(error_code=400, message="Bad Request"), 400
@@ -67,30 +70,31 @@ def setup_error_handlers(app):
 
     @app.errorhandler(PolicyException)
     def policy_error(e):
-        return jsonify(error_code=403, message=str(e)), 403
+        return jsonify(error_code=403, message=e.message), 403
 
     @app.errorhandler(DBError)
     def dberror_handler(e):
-        logger.error(f"A Database Error: {e} occured while handling request from IP: {request.ip}")
+        logger.error(f"A Database Error: {e} occured while handling request from IP: {request.environ.get('REMOTE_ADDR', request.remote_addr)}")
         return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
     @app.errorhandler(ServerError)
     def bitcoind_error_handler(BitcoindRPCError):
-        logger.error(f"An unhandled Exception {e} occured in bitcoind rpc while handling request from IP: {request.ip}")
+        logger.error(f"An unhandled Exception {e} occured in bitcoind rpc while handling request from IP: {request.environ.get('REMOTE_ADDR', request.remote_addr)}")
         return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
     @app.errorhandler(ServerError)
     def error_handler(e):
-        logger.error(f"An Internal Server Error {e} occured while handling request from IP: {request.ip}")
+        logger.error(f"An Internal Server Error {e} occured while handling request from IP: {request.environ.get('REMOTE_ADDR', request.remote_addr)}")
         return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
     @app.errorhandler(Exception)
     def error_handler(e):
-        logger.error(f"Unhandled Exception: {e} occured while handling request from IP: {request.ip}")
+        logger.error(f"Unhandled Exception: {e} occured while handling request from IP: {request.environ.get('REMOTE_ADDR', request.remote_addr)}")
         return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
 
 def sign_transaction(psbt: str, config: Configuration):
+    logger = config.get("logger")
     btcd = config.get("bitcoind")["client"]
     signed_psbt = ""
     try:
@@ -110,6 +114,7 @@ def create_route(app):
         request_timestamp = math.floor(time.time() * 1000000)
         policy_handler = app.config["route_args"]["policy_handler"]
         config = app.config["route_args"]["config"]
+        logger = config.get("logger")
 
         args = request.get_json()
         
@@ -118,7 +123,7 @@ def create_route(app):
         try:
             policy_handler.run({"psbt": psbt_obj})
         except PolicyException as e:
-            raise PolicyException(e.message)
+            raise PolicyException(e.message, e.policy)
 
         # Todo: check if the psbt was actually signed.
         signed = False

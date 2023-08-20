@@ -1,12 +1,16 @@
 import os
 import sys
 import time
-import tempfile
 import pytest
+import shutil
+import tempfile
+import subprocess
+
+from httpx import ConnectError
 
 from ..src import Configuration
 from ..src import BitcoindRPC, BitcoindRPCError
-from ..src.main import create_app, init_db
+from ..src.main import create_app, init_db, setup_logging
 from ..src.daemon import sync_utxos
 from ..src.policy import (
     Policy,
@@ -25,16 +29,50 @@ from ..src.models import (
 from .test_framework.utils import fund_address, createpsbt, reset_aggregate_spends
 
 CONFIG_FILE = "config_test.toml"
+BTC_RPC_PORT = 18443
+BITCOIN_DIRNAME = ".test_bitcoin"
+
+@pytest.fixture(scope="session")
+def run_bitcoind(config):
+    # Run bitcoind in a separate folder
+    os.makedirs(BITCOIN_DIRNAME, exist_ok=True)
+
+    bitcoind = os.getenv("BITCOIND", "bitcoind")
+
+    shutil.copy(os.path.join(os.path.dirname(__file__), "bitcoin.conf"), BITCOIN_DIRNAME)
+    subprocess.Popen([bitcoind, f"--datadir={BITCOIN_DIRNAME}"])
+
+    bitcoind = config.get("bitcoind")
+    btd_client = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
+
+    # Check bitcoind is running
+    while True:
+        try:
+            blckchaininfo = btd_client.getblockchaininfo()
+            print("checking if bitcoind is running: blockchaininfo: ", blckchaininfo)
+            break
+        except ConnectError as e:
+            print("retrying bitcoind rpc after ConnectError")
+            time.sleep(2)
+        except BitcoindRPCError as e:
+            print("retrying bitcoind rpc after BitcoindRPCError:", e)
+            time.sleep(2)
+
+    yield
+
+    btd_client.stop()
+    shutil.rmtree(BITCOIN_DIRNAME)
 
 @pytest.fixture(scope="session")
 def config():
-    return Configuration(f"{os.getcwd()}/tests/{CONFIG_FILE}")
+    return Configuration(os.path.join(os.path.dirname(__file__),CONFIG_FILE))
 
 @pytest.fixture(scope="session", autouse=True)
 def app(config, resigner_wallet, resigner_change_wallet):
     db_fd, db_path = tempfile.mkstemp()
     os.environ["RESIGNER_DB_URL"] = db_path
 
+    logger = setup_logging()
     policy_handler = PolicyHandler()
     policy_handler.register_policy(
         [
@@ -44,6 +82,8 @@ def app(config, resigner_wallet, resigner_change_wallet):
 
     config.set({"client": resigner_wallet}, "bitcoind")
     config.set({"change_client": resigner_change_wallet}, "bitcoind")
+
+    config.set({"logger": logger})
 
     app = create_app(config, policy_handler)
     app.config.update({
@@ -70,12 +110,12 @@ def sync_db(resigner_wallet, reset_db):
     sync_utxos(resigner_wallet, None)
 
 @pytest.fixture(scope="session", autouse=True)
-def funder(config):
+def funder(config, run_bitcoind):
     bitcoind = config.get("bitcoind")
     btd_client = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
     wallet_name = "testwallet"
    
-    wallets = (btd_client.listwalletdir())["wallets"]
+    wallets = btd_client.listwalletdir()["wallets"]
 
     if not any(wallet["name"] == wallet_name for wallet in wallets):
         btd_client.createwallet(wallet_name, False, False, "", False, True)
@@ -83,6 +123,7 @@ def funder(config):
     btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
     address = btd_client.getnewaddress()
 
+    # Mine enough blocks so coinbases are mature and we have enough funds to run everything
     balance = btd_client.getbalance(minconf=101)
     if balance < 50 :
         btd_client.generatetoaddress(101, address)
@@ -133,7 +174,7 @@ def resigner_wallet(config, funder):
     pass
 
 @pytest.fixture(scope="session", autouse=True)
-def resigner_change_wallet(config):
+def resigner_change_wallet(config, funder):
     bitcoind = config.get("bitcoind")
     btd_client = BitcoindRPC(bitcoind["rpc_url"], bitcoind["bitcoind_rpc_user"], bitcoind["bitcoind_rpc_password"])
     wallet_name = "resigner_change_wallet"

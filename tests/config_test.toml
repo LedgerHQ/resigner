@@ -3,8 +3,6 @@
 [resigner_config]
 use_servertime = true # use servertime: if not true use UTC+0. Default: True
 node = "bitcoind" # we only support bitcoind
-fee_limit_max = 0
-fee_limit_min = 0
 
 [wallet]
 wallet_name = "resigner_wallet"
@@ -18,8 +16,8 @@ change_desc = "wsh(and_v(v:pk(tpubD6NzVbkrYhZ4WVLXUV8feb3wGeDj7ifwFCprLS5mMgod52
 [bitcoind]
 network = "regtest" # ["regtest", "mainnet"]
 rpc_url = "http://127.0.0.1:18443"
-bitcoind_rpc_user = "lord-bryan"
-bitcoind_rpc_password = "shallipopi"
+bitcoind_rpc_user = "user"
+bitcoind_rpc_password = "passwd"
 
 [spending_limt]
 # Spending limit in satoshis; The monthly_limit >= weekly_limit >= daily_limit.

@@ -57,6 +57,9 @@ class BitcoindRPC:
         else:
             return response_content["result"]
 
+    def stop(self):
+        return self.call("stop", [])
+
     def getblockchaininfo(self):
         return self.call("getblockchaininfo", [])
 

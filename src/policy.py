@@ -36,7 +36,7 @@ class PolicyHandler:
         for policy in self.__policy_list:
             if policy.is_defined:
                 if not policy.execute_policy(psbt=psbt, **kwargs):
-                    raise PolicyException(f"PSBT Failed to satisfy configured {policy._name} policy", policy._table)
+                    raise PolicyException(f"PSBT Failed to satisfy configured {policy._name} policy", policy._name)
 
 class SpendLimit(Policy):
     _name: str = "SpendLimit"
