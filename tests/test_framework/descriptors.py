@@ -1,8 +1,3 @@
-import pytest
-
-from ..src.analysis import descriptor_analysis
-from ..src import IncompatibleDescriptor
-
 MIN_LOCKTIME_HEIGHT = 12960
 MIN_LOCKTIME_SECS = 7776000
 
@@ -22,36 +17,3 @@ DESCRIPTORS = [
     f"wsh(and_v(or_c(pk({resigner_xpriv}),or_c(pk({recovery_key}),v:older(12990))),pk({participant_2})))"
 ]
 
-def test_descriptors(config):
-
-    # Single user
-    config.set({"desc": DESCRIPTORS[0]}, "wallet")
-    try:
-        descriptor_analysis(config)
-    except Exception as excinfo:
-        pytest.fail(f"unexpected Exception raised: {excinfo}")
-
-    # TimeLock test
-    config.set({"desc": DESCRIPTORS[1]}, "wallet")
-    with pytest.raises(IncompatibleDescriptor) as excinfo:
-        descriptor_analysis(config)
-    assert str(excinfo.value) == f"minimum locktime in blocks: {MIN_LOCKTIME_HEIGHT}. But was set to 8960"
-
-    # Testing more complex miniscript
-    config.set({"desc": DESCRIPTORS[3]}, "wallet")
-    try:
-        descriptor_analysis(config)
-    except Exception as excinfo:
-        pytest.fail(f"unexpected Exception raised: {excinfo}")
-
-    config.set({"desc": DESCRIPTORS[3]}, "wallet")
-    try:
-        descriptor_analysis(config)
-    except Exception as excinfo:
-        pytest.fail(f"unexpected Exception raised: {excinfo}")
-
-    config.set({"desc": DESCRIPTORS[3]}, "wallet")
-    try:
-        descriptor_analysis(config)
-    except Exception as excinfo:
-        pytest.fail(f"unexpected Exception raised: {excinfo}")

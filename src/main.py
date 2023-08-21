@@ -30,7 +30,7 @@ from .models import (
     AggregateSpends
 )
 
-from .analysis import descriptor_analysis, ResignerPsbt, analyse_psbt_from_base64_str
+from .analysis import ResignerPsbt, analyse_psbt_from_base64_str
 
 
 def setup_logging(name="resigner"):  
@@ -224,9 +224,6 @@ def local_main(debug: Optional[bool] = False, port: Optional[int] = 7767):
     config.set({"client": btd_client}, "bitcoind")
     config.set({"change_client": btd_change_client}, "bitcoind")
     config.set({"logger": logger})
-
-    # Analyse Descriptor
-    descriptor_analysis(config)
 
     # Init DB
     init_db()

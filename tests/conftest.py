@@ -143,8 +143,7 @@ def resigner_wallet(config, funder):
         btd_client.createwallet(wallet_name, False, True, "", False, True)
 
         btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
-        wallet = config.get("wallet")
-        desc = wallet["desc"]
+        desc = "wsh(and_v(v:pk(tpubD6NzVbkrYhZ4WVLXUV8feb3wGeDj7ifwFCprLS5mMgod52gHEhdf5eRbHLfKpK7Quev91HYkP1TzooEM9jzY331ViXWzDbeWc4hFy9QdS3R/0/*),or_d(pk(tprv8ZgxMBicQKsPcu7atsTZmCB59KA6mhFr4TyKBghM7Tqu3cNHxVD2S2KFoth2b7c9tZsD3PetrANdQ8oc5KUw3KcZr273Vgxrd1dTzyGepSG/0/*),older(12960))))#uayvvntz"
 
         request = [
             {
@@ -185,8 +184,7 @@ def resigner_change_wallet(config, funder):
         btd_client.createwallet(wallet_name, False, True, "", False, True)
 
         btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
-        wallet = config.get("wallet")
-        desc = wallet["change_desc"]
+        desc = "wsh(and_v(v:pk(tpubD6NzVbkrYhZ4WVLXUV8feb3wGeDj7ifwFCprLS5mMgod52gHEhdf5eRbHLfKpK7Quev91HYkP1TzooEM9jzY331ViXWzDbeWc4hFy9QdS3R/1/*),or_d(pk(tprv8ZgxMBicQKsPcu7atsTZmCB59KA6mhFr4TyKBghM7Tqu3cNHxVD2S2KFoth2b7c9tZsD3PetrANdQ8oc5KUw3KcZr273Vgxrd1dTzyGepSG/1/*),older(12960))))#acuwcxfl"
 
         request = [
             {

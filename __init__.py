@@ -4,6 +4,4 @@ from .src import (
     AggregateSpends,
     BitcoindRPC,
     BitcoindRPCError,
-    descriptor_analysis,
-    IncompatibleDescriptor,
 )

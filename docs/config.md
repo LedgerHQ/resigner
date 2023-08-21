@@ -17,17 +17,8 @@ node = "bitcoind" # only `bitcoind` is supported
 ```
 [wallet]
 wallet_name = "" # name of the descriptor wallet
-
-desc = "wsh(and_v(v:pk(tpubD6NzVbkrYhZ4WVLXUV8feb3wGeDj7ifwFCprLS5mMgod52gHEhdf5eRbHLfKpK7Quev91HYkP1TzooEM9jzY331ViXWzDbeWc4hFy9QdS3R/0/*),or_d(pk(tprv8ZgxMBicQKsPcu7atsTZmCB59KA6mhFr4TyKBghM7Tqu3cNHxVD2S2KFoth2b7c9tZsD3PetrANdQ8oc5KUw3KcZr273Vgxrd1dTzyGepSG/0/*),older(12960))))#uayvvntz" # descriptor of the wallet above
-
 change_wallet_name = "" # name of the change descriptor wallet
 
-change_desc = "wsh(and_v(v:pk(tpubD6NzVbkrYhZ4WVLXUV8feb3wGeDj7ifwFCprLS5mMgod52gHEhdf5eRbHLfKpK7Quev91HYkP1TzooEM9jzY331ViXWzDbeWc4hFy9QdS3R/1/*),or_d(pk(tprv8ZgxMBicQKsPcu7atsTZmCB59KA6mhFr4TyKBghM7Tqu3cNHxVD2S2KFoth2b7c9tZsD3PetrANdQ8oc5KUw3KcZr273Vgxrd1dTzyGepSG/1/*),older(12960))))#acuwcxfl" # descriptor for the change wallet. This is not required, it's just used  in the tests
-
-# This options are set by resigner and would be ignored if set
-min_required_sigs = 
-lock_type =  
-lock_value = 
 ```
 
 ### Bitcoind RPC options
