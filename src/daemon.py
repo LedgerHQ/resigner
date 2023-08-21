@@ -36,7 +36,7 @@ sh.setFormatter(formatter)
 logger = logging.getLogger("resigner.daemon")
 logger.addHandler(sh)
 
-def sync_utxos(btd_client: BitcoindRPC, btd_change_client: BitcoindRPCError):
+def sync_utxos(btd_client: BitcoindRPC):
 
     def update_utxos(tip, unspent, coins):
         # Insert new uxto in Utxos Table
@@ -66,12 +66,6 @@ def sync_utxos(btd_client: BitcoindRPC, btd_change_client: BitcoindRPCError):
 
     logger.info("Updating utxos")
     update_utxos(tip, unspent, coins)
-
-    if btd_change_client is not None:
-        unspent_change = btd_change_client.listunspent()
-        logger.info("Updating change utxos")
-        update_utxos(tip, unspent_change, coins)
-
 
 def sync_aggregate_spends(btd_client: BitcoindRPC):
     signed_spends = SignedSpends.get()
@@ -129,13 +123,12 @@ def daemon(config: Configuration, condition: threading.Condition):
         }, "timer")
 
     btd_client = config.get("bitcoind")["client"]
-    btd_change_client = config.get("bitcoind")["change_client"]
 
     condition.acquire()
     synced_db_with_onchain_data = False
     threads = []
     while True:
-        threads.append(threading.Thread(target=sync_utxos, args=([btd_client, btd_change_client])))
+        threads.append(threading.Thread(target=sync_utxos, args=([btd_client])))
         threads.append(threading.Thread(target=sync_aggregate_spends, args=([btd_client])))
         threads.append(threading.Thread(target=reset_aggregate_spends, args=([config, timer])))
 

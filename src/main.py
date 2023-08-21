@@ -185,9 +185,6 @@ def init_db():
 
 
 def local_main(debug: Optional[bool] = False, port: Optional[int] = 7767):
-    # Logging
-    logger = setup_logging()
-
     # Setup args
     parser = argparse.ArgumentParser(description='Signing Service for Miniscript Policies.')
     parser.add_argument('--config_path', type=str, help='configuration path')
@@ -202,27 +199,16 @@ def local_main(debug: Optional[bool] = False, port: Optional[int] = 7767):
 
     # Initialise bitcoind rpc client
     bitcoind = config.get("bitcoind")
-    rpc_url = bitcoind["rpc_url"] if re.search("/wallet" ,bitcoind["rpc_url"]) else\
-        f"{bitcoind['rpc_url']}/wallet/{config.get('wallet')['wallet_name']}"
     btd_client = BitcoindRPC(
-        rpc_url,
-        bitcoind["bitcoind_rpc_user"],
-        bitcoind["bitcoind_rpc_password"]
-    )
-
-    # Initialize bitcoind rpc client for change wallet
-    search = re.search("/wallet" ,bitcoind["rpc_url"])
-    rpc_url = f"{bitcoind['rpc_url'][0:(search.span[1]-1)]}/{config.get('wallet')['change_wallet_name']}"\
-        if search  else f"{bitcoind['rpc_url']}/wallet/{config.get('wallet')['change_wallet_name']}"
-
-    btd_change_client = BitcoindRPC(
-        rpc_url,
+        bitcoind['bitcoind_wallet_rpc_url'],
         bitcoind["bitcoind_rpc_user"],
         bitcoind["bitcoind_rpc_password"]
     )
 
     config.set({"client": btd_client}, "bitcoind")
-    config.set({"change_client": btd_change_client}, "bitcoind")
+    
+    # Logging
+    logger = setup_logging()
     config.set({"logger": logger})
 
     # Init DB

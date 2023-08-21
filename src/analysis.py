@@ -70,7 +70,6 @@ class ResignerPsbt:
 
 def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPsbt:
     btd_client = config.get("bitcoind")["client"]
-    btd_change_client = config.get("bitcoind")["change_client"]
 
     decoded_psbt =  btd_client.decodepsbt(psbt)
     psbt_vin = decoded_psbt["tx"]["vin"]
@@ -128,21 +127,13 @@ def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPs
         address = vout["scriptPubKey"]["address"]
         addr_info = btd_client.getaddressinfo(address)
         ismine = addr_info["ismine"]
-        is_changeaddress = False
 
         if not addr_info["ismine"]:
-            changeaddr_info = btd_change_client.getaddressinfo(address)
-            if changeaddr_info["ismine"]:
-                logger.info("address: %s is a change address", address)
-                is_changeaddress = True
-                ismine = True
-            else:
                 spend_amount += vout["value"]
 
         recv = {
             "address": address,  # Some vout contain multiple addresses; we expect only one.
             "value": vout["value"],
-            "is_changeaddress": is_changeaddress,
             "ismine": ismine
         }
         recipient.append(recv)

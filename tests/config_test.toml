@@ -4,13 +4,10 @@
 use_servertime = true # use servertime: if not true use UTC+0. Default: True
 node = "bitcoind" # we only support bitcoind
 
-[wallet]
-wallet_name = "resigner_wallet"
-change_wallet_name = "resigner_change_wallet"
-
 [bitcoind]
 network = "regtest" # ["regtest", "mainnet"]
 rpc_url = "http://127.0.0.1:18443"
+bitcoind_wallet_rpc_url = "http://127.0.0.1:18443/wallet/resigner_wallet"
 bitcoind_rpc_user = "user"
 bitcoind_rpc_password = "passwd"
 
