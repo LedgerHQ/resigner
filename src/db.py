@@ -6,4 +6,4 @@ class Database:
         self.connection = sqlite3.connect(path, timeout=100, check_same_thread=False, **kwargs)
 
 
-Session = Database(os.getenv("RESIGNER_DB_URI") or "resigner.db" ).connection
+Session = Database(os.getenv("RESIGNER_DB_URI", "resigner.db")).connection

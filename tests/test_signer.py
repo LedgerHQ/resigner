@@ -17,7 +17,7 @@ def test_signer(client, funder, resigner_wallet, user_wallet_1, user_change_wall
     incomplete_psbt = user_wallet_1.walletprocesspsbt(unsigned_psbt)["psbt"]
 
     response = client.post("/process-psbt", json={"psbt": incomplete_psbt})
-
+ 
     assert response.json["signed"] == True
 
     raw_hex = resigner_wallet.finalisepsbt(response.json["psbt"])["hex"]

@@ -88,6 +88,7 @@ class SpendLimit(Policy):
                     (total_monthly_spends + psbt.amount_sats) <= self.monthly_limit))
         else:
             return (not self.is_defined())
+
         return all(condition)
 
     @property

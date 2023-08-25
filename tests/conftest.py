@@ -107,7 +107,7 @@ def reset_db():
 
 @pytest.fixture(scope="function", autouse=True)
 def sync_db(resigner_wallet, reset_db):
-    sync_utxos(resigner_wallet, None)
+    sync_utxos(resigner_wallet)
 
 @pytest.fixture(scope="session", autouse=True)
 def funder(config, run_bitcoind):
@@ -143,16 +143,29 @@ def resigner_wallet(config, funder):
         btd_client.createwallet(wallet_name, False, True, "", False, True)
 
         btd_client._url=f"{bitcoind['rpc_url']}/wallet/{wallet_name}"
-        desc = "wsh(and_v(v:pk(tpubD6NzVbkrYhZ4WVLXUV8feb3wGeDj7ifwFCprLS5mMgod52gHEhdf5eRbHLfKpK7Quev91HYkP1TzooEM9jzY331ViXWzDbeWc4hFy9QdS3R/0/*),or_d(pk(tprv8ZgxMBicQKsPcu7atsTZmCB59KA6mhFr4TyKBghM7Tqu3cNHxVD2S2KFoth2b7c9tZsD3PetrANdQ8oc5KUw3KcZr273Vgxrd1dTzyGepSG/0/*),older(12960))))#uayvvntz"
+
+        descriptors = [
+            "wsh(and_v(v:pk(tpubD6NzVbkrYhZ4WVLXUV8feb3wGeDj7ifwFCprLS5mMgod52gHEhdf5eRbHLfKpK7Quev91HYkP1TzooEM9jzY331ViXWzDbeWc4hFy9QdS3R/1/*),or_d(pk(tprv8ZgxMBicQKsPcu7atsTZmCB59KA6mhFr4TyKBghM7Tqu3cNHxVD2S2KFoth2b7c9tZsD3PetrANdQ8oc5KUw3KcZr273Vgxrd1dTzyGepSG/1/*),older(12960))))#acuwcxfl",
+            "wsh(and_v(v:pk(tpubD6NzVbkrYhZ4WVLXUV8feb3wGeDj7ifwFCprLS5mMgod52gHEhdf5eRbHLfKpK7Quev91HYkP1TzooEM9jzY331ViXWzDbeWc4hFy9QdS3R/0/*),or_d(pk(tprv8ZgxMBicQKsPcu7atsTZmCB59KA6mhFr4TyKBghM7Tqu3cNHxVD2S2KFoth2b7c9tZsD3PetrANdQ8oc5KUw3KcZr273Vgxrd1dTzyGepSG/0/*),older(12960))))#uayvvntz"
+        ]
 
         request = [
+                        {
+                'desc': descriptors[0],
+                'active': True,
+                'range': [0, 1000],
+                'next_index': 0,
+                'timestamp': 'now',
+                'internal': True
+            },
             {
-                'desc': desc,
+                'desc': descriptors[1],
                 'active': True,
                 'range': [0, 1000],
                 'next_index': 0,
                 'timestamp': 'now'
             }
+
         ]
 
         res = btd_client.importdescriptors(request)
