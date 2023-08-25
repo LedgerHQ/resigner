@@ -321,6 +321,9 @@ class BitcoindRPC:
             [minconf, include_empty, include_watchonly, address_filter]
         )
 
+    def listdescriptors(self, private: bool = False):
+        return self.call("listdescriptors", [private])
+
     def walletlock(self):
         return self.call("walletlock", [])
 

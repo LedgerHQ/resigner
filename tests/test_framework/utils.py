@@ -11,7 +11,7 @@ def createpsbt(wallet, utxos, address, amount, change_address):
 
     for utxo in utxos:
         amount_available_for_spend += utxo["amount"]
-    
+
     change = amount_available_for_spend - amount - fee
     inputs = [
         {"txid": utxo["txid"], "vout": utxo["vout"]} for utxo in utxos
