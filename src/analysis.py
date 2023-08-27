@@ -41,6 +41,7 @@ class RecipientType(TypedDict):
 
 class ResignerPsbt:
     psbt_str: str
+    txid: str
     utxos: List[UtxosType] = []  # Utxos we control
     third_party_utxos: List[UtxosType] = []
     recipient: List[RecipientType] = []
@@ -51,6 +52,7 @@ class ResignerPsbt:
     def __init__(
         self,
         psbt: str,
+        txid: str,
         utxos: UtxosType,
         third_party_utxos: UtxosType,
         recipient: RecipientType,
@@ -59,6 +61,7 @@ class ResignerPsbt:
         safe_to_sign: Optional[bool] = False
     ):
         self.psbt_str = psbt
+        self.txid = txid
         self.utxos = utxos
         self.third_party_utxos = third_party_utxos
         self.recipient = recipient
@@ -149,6 +152,7 @@ def analyse_psbt_from_base64_str(psbt: str, config: Configuration) -> ResignerPs
 
     return ResignerPsbt(
             psbt,
+            decoded_psbt["tx"]["txid"],
             utxos,
             third_party_utxos,
             recipient,

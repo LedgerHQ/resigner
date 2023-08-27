@@ -75,7 +75,7 @@ def setup_error_handlers(app):
     @app.errorhandler(DatabaseError)
     @app.errorhandler(DBError)
     def dberror_handler(e):
-        logger.error(f"A Database Error: {str(e.__traceback__.tb_frame)} occured while handling request from IP: {request.environ.get('REMOTE_ADDR', request.remote_addr)}")
+        logger.error(f"A Database Error: {e} occured while handling request from IP: {request.environ.get('REMOTE_ADDR', request.remote_addr)}")
         return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
     @app.errorhandler(ServerError)
