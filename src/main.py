@@ -72,9 +72,10 @@ def setup_error_handlers(app):
     def policy_error(e):
         return jsonify(error_code=403, message=e.message), 403
 
+    @app.errorhandler(DatabaseError)
     @app.errorhandler(DBError)
     def dberror_handler(e):
-        logger.error(f"A Database Error: {e} occured while handling request from IP: {request.environ.get('REMOTE_ADDR', request.remote_addr)}")
+        logger.error(f"A Database Error: {str(e.__traceback__.tb_frame)} occured while handling request from IP: {request.environ.get('REMOTE_ADDR', request.remote_addr)}")
         return jsonify(error_code=500, message=f"Internal Server Error: {e}"), 500
 
     @app.errorhandler(ServerError)
@@ -98,10 +99,9 @@ def sign_transaction(psbt: str, config: Configuration):
     btcd = config.get("bitcoind")["client"]
     signed_psbt = ""
     try:
-        # Todo: also sign psbts from containing change utxo inputs 
+        logger.info("signing psbt: %s", psbt)
         signed_psbt = btcd.walletprocesspsbt(psbt)
     except BitcoindRPCError as e:
-        print("signing psbt failed psbt: ", psbt)
         raise ServerError(e)
 
     logger.info("Processed PSBT: %s...%s without errors", psbt[:9], psbt[-10:])
@@ -135,6 +135,7 @@ def create_route(app):
             pass
 
         SignedSpends.insert(
+                psbt_obj.txid,
                 args["psbt"],
                 result["psbt"],
                 psbt_obj.amount_sats,
@@ -142,9 +143,8 @@ def create_route(app):
                 False
         )
 
-        tx = SignedSpends.get([], {"request_timestamp": request_timestamp})[0]
         for utxo in psbt_obj.utxos:
-            SpentUtxos.insert(utxo["txid"], utxo["vout"], tx["id"])
+            SpentUtxos.insert(utxo["txid"], utxo["vout"], psbt_obj.txid)
 
         logger.info("Updating aggregate spends, amount: %d", psbt_obj.amount_sats)
         agg_spends = AggregateSpends.get()[0]
