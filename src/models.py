@@ -178,7 +178,7 @@ class SpentUtxos(BaseModel):
         (id INTEGER PRIMARY KEY NOT NULL,
         txid VARCHAR NOT NULL,
         vout INT NOT NULL,
-        psbt_id INT NOT NULL,
+        psbt_id VARCHAR NOT NULL,
         UNIQUE (txid, vout),
         FOREIGN KEY (psbt_id) REFERENCES SIGNED_SPENDS(id))
         """
@@ -187,9 +187,9 @@ class SpentUtxos(BaseModel):
     ]
 
     @classmethod
-    def insert(self, txid: str, vout: int, psbt_id: int):
-        sql = f"""INSERT INTO {self._table} VALUES (NULL,?,?, ?);"""
-
+    def insert(self, txid: str, vout: int, psbt_id: str):
+        sql = f"""INSERT INTO {self._table} VALUES (NULL,?,?,?);"""
+        
         rlock = RLock()
         with rlock:
             cursor = Session.cursor()
@@ -250,7 +250,7 @@ class SignedSpends(BaseModel):
     _table: str = "SIGNED_SPENDS"
     _primary_key = True
     _schema: str = """CREATE TABLE SIGNED_SPENDS
-        (id INTEGER PRIMARY KEY NOT NULL,
+        (id VARCHAR NOT NULL,
         processed_at INT NOT NULL,
         unsigned_psbt VARCHAR NOT NULL,
         signed_psbt VARCHAR NOT NULL,
@@ -272,13 +272,14 @@ class SignedSpends(BaseModel):
     @classmethod
     def insert(
         self,
+        txid: str,
         unsigned_psbt: str,
         signed_psbt: str,
         amount_sats: int,
         request_timestamp: Optional[int] = 0,
         confirmed: Optional[bool] = False
     ):
-        sql = f"""INSERT INTO {self._table} VALUES (NULL,?,?,?,?,?,?);"""
+        sql = f"""INSERT INTO {self._table} VALUES (?,?,?,?,?,?,?);"""
 
         rlock = RLock()
         with rlock:
@@ -286,6 +287,7 @@ class SignedSpends(BaseModel):
             cursor.execute(
                 sql,
                 [
+                    txid,
                     time.time(),
                     unsigned_psbt,
                     signed_psbt,
