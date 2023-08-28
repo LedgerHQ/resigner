@@ -39,6 +39,15 @@ class Configuration:
 
             if "rpc_url" not in self.config["bitcoind"]:
                 self.set({"rpc_url": os.getenv("RESIGNER_RPC_URL")}, "bitcoind")
+
+        if "resigner_config" in self.config:
+            if "min_conf" in self.config["resigner_config"]:
+                min_conf = self.config["resigner_config"]["min_conf"]
+                if min_conf < 1 or min_conf > 50:
+                    self.set({"min_conf": 3}, "resigner_config")  # Sensible default?
+            else:
+                self.set({"min_conf": 3}, "resigner_config")
+
  
     def get(self, key: str) -> Union[Dict, str]:
         if key in self.config:

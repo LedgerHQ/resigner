@@ -3,6 +3,7 @@
 [resigner_config]
 use_servertime = true # use servertime: if not true use UTC+0. Default: True
 node = "bitcoind" # we only support bitcoind
+min_conf = 3 # Minimum confirmation before we consider a tx spent
 
 [bitcoind]
 network = "regtest" # ["regtest", "mainnet"]

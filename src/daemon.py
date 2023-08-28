@@ -67,26 +67,39 @@ def sync_utxos(btd_client: BitcoindRPC):
     logger.info("Updating utxos")
     update_utxos(tip, unspent, coins)
 
-def sync_aggregate_spends(btd_client: BitcoindRPC):
+def sync_aggregate_spends(config: Configuration):
+    btd_client = config.get("bitcoind")["client"]
+    min_conf = config.get("resigner_config")["min_conf"]
     signed_spends = SignedSpends.get()
+
     for row in signed_spends:
-        spent_utxos = SpentUtxos.get([], {"psbt_id": row["id"]})
         if not row["confirmed"]:
-            txouts = [(btd_client.gettxout(spends["txid"], spends["vout"])) for spends in spent_utxos]
-            if not all(txouts):
-                SignedSpends.update({"confirmed": True}, {"id": row["id"]})
-                logger.info("Signed psbt: %s has been confirmed on the blockchain", row["signed_psbt"])
-                agg_spends = AggregateSpends.get()[0]
-                AggregateSpends.update(
-                    {
-                        "confirmed_daily_spends": agg_spends["confirmed_daily_spends"] + row["amount_sats"],
-                        "unconfirmed_daily_spends": agg_spends["unconfirmed_daily_spends"] - row["amount_sats"],
-                        "confirmed_weekly_spends": agg_spends["confirmed_weekly_spends"] + row["amount_sats"],
-                        "unconfirmed_weekly_spends": agg_spends["unconfirmed_weekly_spends"] - row["amount_sats"],
-                        "confirmed_monthly_spends": agg_spends["confirmed_monthly_spends"] + row["amount_sats"],
-                        "unconfirmed_monthly_spends": agg_spends["unconfirmed_monthly_spends"] - row["amount_sats"]
-                    }
-                )
+            try:
+                tx = btd_client.getrawtransaction(row["id"])
+                # After 6 confirmations, the chances of loosing a tx due to reorganisations becomes negligible
+                if tx["confirmations"] > min_conf:
+                    logger.info("Signed psbt: %s has been confirmed on the blockchain", row["signed_psbt"])
+                    SignedSpends.update({"confirmed": True}, {"id": row["id"]})
+                    agg_spends = AggregateSpends.get()[0]
+                    AggregateSpends.update(
+                        {
+                            "confirmed_daily_spends": agg_spends["confirmed_daily_spends"] + row["amount_sats"],
+                            "unconfirmed_daily_spends": agg_spends["unconfirmed_daily_spends"] - row["amount_sats"],
+                            "confirmed_weekly_spends": agg_spends["confirmed_weekly_spends"] + row["amount_sats"],
+                            "unconfirmed_weekly_spends": agg_spends["unconfirmed_weekly_spends"] - row["amount_sats"],
+                            "confirmed_monthly_spends": agg_spends["confirmed_monthly_spends"] + row["amount_sats"],
+                            "unconfirmed_monthly_spends": agg_spends["unconfirmed_monthly_spends"] - row["amount_sats"]
+                        }
+                    )
+            except BitcoindRPCError as e:
+                logger.info("Transaction `%s` does not exist on the blockchain", row["id"])
+                spent_utxos = SpentUtxos.get([], {"psbt_id": row["id"]})
+                txouts = [(btd_client.gettxout(spends["txid"], spends["vout"])) for spends in spent_utxos]
+                if not all(txouts):
+                    logger.info("UTXOs in transaction `%s` has been respent in another transaction", row["id"])
+                    SignedSpends.delete({"id": row["id"]})
+                    SpentUtxos.delete({"psbt_id": row["id"]})
+                
 
 def reset_aggregate_spends(config: Configuration, timer: SpendLimit):
     """Reset the aggregate spends in the db after each day, week and month
@@ -129,7 +142,7 @@ def daemon(config: Configuration, condition: threading.Condition):
     threads = []
     while True:
         threads.append(threading.Thread(target=sync_utxos, args=([btd_client])))
-        threads.append(threading.Thread(target=sync_aggregate_spends, args=([btd_client])))
+        threads.append(threading.Thread(target=sync_aggregate_spends, args=([config])))
         threads.append(threading.Thread(target=reset_aggregate_spends, args=([config, timer])))
 
         start_time = math.floor(time.time())
