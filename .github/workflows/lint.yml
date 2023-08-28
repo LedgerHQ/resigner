@@ -1,10 +1,11 @@
 name: Code style check
-
-on: [push, pull_request]
+on:
+  push:
     paths:
       - '**.py'
-    paths-ignore:
-      - 'docs/**'
+  pull_request:
+    paths:
+      - '**.py'
 jobs:
   job_lint:
     name: Lint
