@@ -1,0 +1,22 @@
+name: Code style check
+
+on: [push, pull_request]
+    paths:
+      - '**.py'
+    paths-ignore:
+      - 'docs/**'
+jobs:
+  job_lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+
+      - name: lint
+        run: make check
