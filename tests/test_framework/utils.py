@@ -12,7 +12,10 @@ def createpsbt(wallet, utxos, address, amount, change_address):
     for utxo in utxos:
         amount_available_for_spend += utxo["amount"]
 
-    change = amount_available_for_spend - amount - fee
+    if amount_available_for_spend < (amount+fee):
+        raise ValueError("amount_available_for_spend is less than spend amount")
+    
+    change = round(amount_available_for_spend - amount - fee, 8)
     inputs = [
         {"txid": utxo["txid"], "vout": utxo["vout"]} for utxo in utxos
     ]

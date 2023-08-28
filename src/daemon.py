@@ -67,14 +67,17 @@ def sync_utxos(btd_client: BitcoindRPC):
     logger.info("Updating utxos")
     update_utxos(tip, unspent, coins)
 
-def sync_aggregate_spends(btd_client: BitcoindRPC):
+def sync_aggregate_spends(config: Configuration):
+    btd_client = config.get("bitcoind")["client"]
+    min_conf = config.get("resigner_config")["min_conf"]
     signed_spends = SignedSpends.get()
+
     for row in signed_spends:
         if not row["confirmed"]:
             try:
                 tx = btd_client.getrawtransaction(row["id"])
                 # After 6 confirmations, the chances of loosing a tx due to reorganisations becomes negligible
-                if tx["confirmations"] > 6:
+                if tx["confirmations"] > min_conf:
                     logger.info("Signed psbt: %s has been confirmed on the blockchain", row["signed_psbt"])
                     SignedSpends.update({"confirmed": True}, {"id": row["id"]})
                     agg_spends = AggregateSpends.get()[0]
@@ -139,7 +142,7 @@ def daemon(config: Configuration, condition: threading.Condition):
     threads = []
     while True:
         threads.append(threading.Thread(target=sync_utxos, args=([btd_client])))
-        threads.append(threading.Thread(target=sync_aggregate_spends, args=([btd_client])))
+        threads.append(threading.Thread(target=sync_aggregate_spends, args=([config])))
         threads.append(threading.Thread(target=reset_aggregate_spends, args=([config, timer])))
 
         start_time = math.floor(time.time())
