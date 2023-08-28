@@ -1,0 +1,30 @@
+name: tests
+
+on: [push, pull_request]
+    paths:
+      - '**.py'
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10.12"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+
+      - name: Setup bitcoin-core 
+        run: |
+          cd tests
+          wget https://bitcoin.org/bin/bitcoin-core-25.0/bitcoin-25.0-x86_64-linux-gnu.tar.gz
+          tar xzf bitcoin-25.0-x86_64-linux-gnu.tar.gz
+          sudo install -m 0755 -o root -g root -t /usr/local/bin bitcoin-25.0/bin/*
+
+      - name: Run tests
+        run: make test
