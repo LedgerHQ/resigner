@@ -1,10 +1,14 @@
-all: check #test clean
+all: check test clean
 
 
 .PHONY: all
 
 check:
-	# Run linter
 	@echo Linting!
 	flake8
 
+test:
+	pytest -s
+
+clean:
+	rm resigner.db
