@@ -9,7 +9,7 @@ import threading
 from typing import Optional
 from sqlite3 import OperationalError, IntegrityError, DatabaseError
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory, abort
 
 
 from .errors import ServerError, UtxoError, UnsafePSBTError, DBError
@@ -50,7 +50,7 @@ def setup_error_handlers(app):
 
     @app.errorhandler(400)
     def bad_request(e):
-        return jsonify(error_code=400, message="Bad Request"), 400
+        return jsonify(error_code=400, message=e.description['message'] or "Bad Request"), 400
 
     @app.errorhandler(404)
     def route_not_found(e):
@@ -58,7 +58,11 @@ def setup_error_handlers(app):
 
     @app.errorhandler(405)
     def wrong_method(e):
-        return jsonify(error_code=405, message="Only the POST Method is allowed"), 405
+        if request.path.startswith('/process-psbt'):
+            # we return a json saying so
+            return jsonify(error_code=405, message="Only the POST Method is allowed"), 405
+        else:
+            return jsonify(message="Method Not Allowed"), 405
     
     @app.errorhandler(UnsafePSBTError)
     def psbt_error(e):
@@ -109,6 +113,14 @@ def sign_transaction(psbt: str, config: Configuration):
     return signed_psbt
 
 def create_route(app):
+    @app.route('/swagger')
+    def swagger_ui():
+        return send_from_directory(os.path.join(os.path.dirname(__file__), 'swagger'), 'index.html')
+
+    @app.route('/swagger/<path:path>')
+    def serve_static(path):
+        return send_from_directory(os.path.join(os.path.dirname(__file__), 'swagger'), path)
+
     @app.route('/process-psbt', methods=['POST'])
     def ProcessPsbt():
         request_timestamp = math.floor(time.time() * 1000000)
@@ -117,6 +129,9 @@ def create_route(app):
         logger = config.get("logger")
 
         args = request.get_json()
+
+        if not args["psbt"]:
+            abort(400, {'message': 'psbt not supplied in request'}) 
         
         psbt_obj = analyse_psbt_from_base64_str(args["psbt"], config)
 
@@ -158,6 +173,7 @@ def create_route(app):
 
         # Due to bitcoind policies we don't actually know if the psbt was signed. we only know that it didn't throw an error
         return jsonify(psbt=result["psbt"], signed=True)
+
 
 def create_app(config: Configuration, policy_handler: PolicyHandler, debug=True)-> Flask:
     app = Flask(__name__)
