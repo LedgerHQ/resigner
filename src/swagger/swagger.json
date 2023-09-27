@@ -1,0 +1,50 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Resigner",
+    "version": "1.0",
+    "description": "Resigner is an easy to program hot signing service for miniscript policies."
+  },
+  "externalDocs": {
+    "url": "https://github.com/LedgerHQ/resigner",
+    "description": "Find out more about Resigner"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:7767"
+    }
+  ],
+  "paths": {
+    "/process-psbt": {
+      "summary": "Sign a PSBT according to a preset spending policy",
+      "description": "Sign a PSBT according to a preset spending policy",
+      "post": {
+        "summary": "Sign a PSBT using keys held by resigner",
+        "description": "",
+        "operationId": "signPSBT",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "example": "{\"psbt\": \"\"}"
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default error sample response",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "response": {
+                    "value": "{\"psbt\":\"\", signed: true}"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
