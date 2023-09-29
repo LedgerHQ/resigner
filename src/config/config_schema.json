@@ -1,0 +1,95 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://github.com/LedgerHQ/resigner/blob/master/src/config/config_schema.json",
+    "title": "ResignerPolicyConfig",
+    "description": "", 
+    "type": "object",
+    "properties": {
+        "predicate":{
+            "type": "object",
+            "properties": {
+            },
+            "anyOf": [
+                {"$ref": "#/$defs/SpendLimit"},
+                {"$ref": "#/$defs/2FA"},
+                {}
+            ]
+
+        },
+        "policy":{
+            "type": "array",
+            "items": {
+                "anyOf": [
+                    {
+                      "type": "array",
+                      "prefixItems": [
+                          {"enum": ["not"]},
+                          {"$ref": "/config_schema.json/predicate"}
+                      ]
+                    },
+                    {
+                        "type": "array",
+                        "prefixItems": [
+                            {"enum": ["and"]},
+                            {"$ref": "/config_schema.json/predicate"},
+                            {"$ref": "/config_schema.json/predicate"}
+                        ]
+                    },
+                    {
+                        "type": "array",
+                        "prefixItems": [
+                            {"enum": ["or"]},
+                            {"$ref": "/config_schema.json/predicate"},
+                            {"$ref": "/config_schema.json/predicate"}
+                        ]
+                    },
+                    {
+                        "type": "array",
+                        "prefixItems": [
+                            {"enum": ["if_then"]},
+                            {"$ref": "/config_schema.json/predicate"},
+                            {"$ref": "/config_schema.json/predicate"}
+                        ]
+                    },
+                    {
+                        "type": "array",
+                        "prefixItems": [
+                            {"enum": ["if_then_else"]},
+                            {"$ref": "/config_schema.json/predicate"},
+                            {"$ref": "/config_schema.json/predicate"},
+                            {"$ref": "/config_schema.json/predicate"}
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    "required": ["predicate", "policy"],
+    "$defs": {
+        "SpendLimit":{
+            "type": "object",
+            "description": "",
+            "properties": {
+                "dailylimit":  {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "weeklylimit":  {
+                    "type": "number",
+                    "minimum": 0,
+                },
+                "monthlylimit":  {
+                    "type": "number",
+                    "minimum": 0
+                }
+            },
+            "required": []
+                },
+        "2FA":{
+            "type": "string",
+            "description": "",
+            "$comment": "publickey"
+        },
+        "not":""
+    }
+}
